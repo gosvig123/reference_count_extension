@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+let currentDecorationType: vscode.TextEditorDecorationType | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
   console.log("CSS Class Counter extension is now active");
 
@@ -42,7 +44,7 @@ export function activate(context: vscode.ExtensionContext) {
     debouncedCountCssClasses();
   }
 }
-  function isRelevantFileType(document: vscode.TextDocument): boolean {
+function isRelevantFileType(document: vscode.TextDocument): boolean {
   const relevantTypes = [
     "css",
     "html",
@@ -152,7 +154,13 @@ async function countCssClasses() {
       `Classes and IDs found: ${JSON.stringify(Object.fromEntries(classMap))}`
     );
 
-    const decorationType = vscode.window.createTextEditorDecorationType({});
+    // Clear previous decorations if they exist
+    if (currentDecorationType) {
+      currentDecorationType.dispose();
+    }
+
+    // Create a new decoration type
+    currentDecorationType = vscode.window.createTextEditorDecorationType({});
     const decorations: vscode.DecorationOptions[] = [];
     const decoratedRanges = new Set<string>();
 
@@ -160,7 +168,10 @@ async function countCssClasses() {
 
     for (const [name, { count, type }] of classMap.entries()) {
       // Use word boundaries to match full class names
-      const regex = new RegExp(`\\b${name.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`, "g");
+      const regex = new RegExp(
+        `\\b${name.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`,
+        "g"
+      );
       let match;
       while ((match = regex.exec(text)) !== null) {
         const startPos = document.positionAt(match.index);
@@ -203,7 +214,8 @@ async function countCssClasses() {
       }
     }
 
-    editor.setDecorations(decorationType, decorations);
+    // Set new decorations
+    editor.setDecorations(currentDecorationType, decorations);
     console.log(`CSS classes and IDs counted: ${classMap.size}`);
   } catch (error) {
     console.error("Error in countCssClasses:", error);
@@ -223,4 +235,8 @@ function debounce(func: Function, wait: number): (...args: any[]) => void {
   };
 }
 
-export function deactivate() {}
+export function deactivate() {
+  if (currentDecorationType) {
+    currentDecorationType.dispose();
+  }
+}
