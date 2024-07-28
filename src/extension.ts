@@ -42,8 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
     debouncedCountCssClasses();
   }
 }
-
-function isRelevantFileType(document: vscode.TextDocument): boolean {
+  function isRelevantFileType(document: vscode.TextDocument): boolean {
   const relevantTypes = [
     "css",
     "html",
