@@ -16,7 +16,8 @@
     "onLanguage:typescript",
     "onLanguage:javascriptreact",
     "onLanguage:typescriptreact",
-    "onCommand:css-class-counter.countClasses"
+    "onCommand:css-class-counter.countClasses",
+    "onLanguage:python"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -24,6 +25,10 @@
       {
         "command": "css-class-counter.countClasses",
         "title": "CSS Class Counter: Count Classes"
+      },
+      {
+        "command": "extension.countDefinitionsAndUsages",
+        "title": "Count Definitions and Usages"
       }
     ]
   },
