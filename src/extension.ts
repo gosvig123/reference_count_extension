@@ -58,171 +58,106 @@ function isRelevantFileType(document: vscode.TextDocument): boolean {
 
 async function countCssClasses() {
   const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    console.log("No active editor found");
-    return;
+  if (!editor) return;
+
+  const document = editor.document;
+  const text = document.getText();
+  const classMap = new Map<string, { cssCount: number; usageCount: number; type: string }>();
+
+  // Scan CSS files
+  const cssFiles = await vscode.workspace.findFiles("**/*.css", "**/node_modules/**");
+  for (const file of cssFiles) {
+    const content = await vscode.workspace.fs.readFile(file);
+    const fileContent = Buffer.from(content).toString("utf8");
+    const cssRegex = /([.#])([\w-]+)\s*{/g;
+    let cssMatch;
+    while ((cssMatch = cssRegex.exec(fileContent)) !== null) {
+      const [, prefix, name] = cssMatch;
+      const type = prefix === '.' ? 'class' : 'id';
+      const info = classMap.get(name) || { cssCount: 0, usageCount: 0, type };
+      info.cssCount++;
+      classMap.set(name, info);
+    }
   }
 
-  try {
-    const document = editor.document;
-    const text = document.getText();
-    console.log(`Scanning file: ${document.fileName}`);
-
-    const classMap = new Map<string, { count: number; type: string }>();
-
-    // Updated regex to correctly capture classes with dashes
-    const classRegex = /(?:class|className)=["']([^"']+)["']|(?<=\.)([\w-]+)/g;
-    const idRegex = /(?:id)=["']([^"']+)["']|(?<=#)([\w-]+)/g;
-    let match;
-
-    // Scan all CSS files in the workspace to collect defined classes
-    const cssFiles = await vscode.workspace.findFiles(
-      "**/*.css",
-      "**/node_modules/**"
-    );
-    for (const file of cssFiles) {
-      console.log(`Scanning CSS file: ${file.fsPath}`);
-      const content = await vscode.workspace.fs.readFile(file);
-      const fileContent = Buffer.from(content).toString("utf8");
-
-      while ((match = classRegex.exec(fileContent)) !== null) {
-        const classes = (match[1] || match[2]).split(/\s+/);
-        classes.forEach((cls) => {
-          if (cls && !classMap.has(cls)) {
-            classMap.set(cls, { count: 0, type: "class" });
-            console.log(`Found class in CSS file: ${cls}`);
-          }
-        });
-      }
-    }
-
-    // Scan all non-CSS files to count class usage
-    const nonCssFiles = await vscode.workspace.findFiles(
-      "**/*.{tsx,jsx,html,js,ts}",
-      "**/node_modules/**"
-    );
-    for (const file of nonCssFiles) {
-      console.log(`Scanning non-CSS file: ${file.fsPath}`);
-      const content = await vscode.workspace.fs.readFile(file);
-      const fileContent = Buffer.from(content).toString("utf8");
-
-      // Updated regex to handle more complex class assignments
-      const jsxClassRegex =
-        /(?:class|className)=(?:{`([^`]+)`}|["']([^"']+)["'])/g;
-      let match;
-      while ((match = jsxClassRegex.exec(fileContent)) !== null) {
-        const classString = match[1] || match[2];
-        // Split the class string and handle conditional classes
-        const classes = classString.split(/\s+/).flatMap((cls) => {
-          if (cls.includes("${")) {
-            // Handle conditional classes
-            return (
-              cls
-                .match(/\$\{[^}]+\}/g)
-                ?.map((cond) => cond.slice(2, -1).split(":").pop()?.trim()) ||
-              []
-            );
-          }
-          return cls;
-        });
-
-        classes.forEach((cls) => {
-          if (cls && !cls.includes("$")) {
-            // Exclude any remaining template literal syntax
-            const existingClass = classMap.get(cls);
-            if (existingClass) {
-              existingClass.count++;
-            } else {
-              classMap.set(cls, { count: 1, type: "class" });
-            }
-            console.log(`Found class usage in non-CSS file: ${cls}`);
-          }
-        });
-      }
-    }
-
-    // Scan for IDs in the current file
-    while ((match = idRegex.exec(text)) !== null) {
-      const id = match[1] || match[2];
-      if (id) {
-        classMap.set(id, { count: 1, type: "id" });
-        console.log(`Found ID in current file: ${id}`);
-      }
-    }
-
-    console.log(
-      `Classes and IDs found: ${JSON.stringify(Object.fromEntries(classMap))}`
-    );
-
-    // Clear previous decorations if they exist
-    if (currentDecorationType) {
-      currentDecorationType.dispose();
-    }
-
-    // Create a new decoration type
-    currentDecorationType = vscode.window.createTextEditorDecorationType({});
-    const decorations: vscode.DecorationOptions[] = [];
-    const decoratedRanges = new Set<string>();
-
-    const isCSS = document.languageId === "css";
-
-    for (const [name, { count, type }] of classMap.entries()) {
-      // Use word boundaries to match full class names
-      const regex = new RegExp(
-        `\\b${name.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`,
-        "g"
-      );
-      let match;
-      while ((match = regex.exec(text)) !== null) {
-        const startPos = document.positionAt(match.index);
-        const endPos = document.positionAt(match.index + name.length);
-        const range = new vscode.Range(startPos, endPos);
-        const rangeKey = `${range.start.line},${range.start.character},${range.end.line},${range.end.character}`;
-
-        if (!decoratedRanges.has(rangeKey)) {
-          const hoverMessage = new vscode.MarkdownString();
-          hoverMessage.appendMarkdown(
-            `**${type.toUpperCase()}**: \`${name}\`\n\n`
-          );
-          hoverMessage.appendMarkdown(
-            `Used ${count} time${count !== 1 ? "s" : ""}`
-          );
-
-          if (count > 1 && type === "id") {
-            hoverMessage.appendMarkdown(
-              "\n\n**Warning**: IDs should be unique"
-            );
-          }
-
-          const decoration: vscode.DecorationOptions = {
-            range,
-            hoverMessage,
-            renderOptions: {
-              after: {
-                contentText: isCSS ? `  (${count})` : "",
-                color:
-                  type === "class"
-                    ? "rgba(153, 153, 153, 0.7)"
-                    : "rgba(255, 165, 0, 0.7)",
-                fontWeight: "normal",
-              },
-            },
-          };
-          decorations.push(decoration);
-          decoratedRanges.add(rangeKey);
+  // Scan non-CSS files for class usage
+  const nonCssFiles = await vscode.workspace.findFiles("**/*.{js,jsx,ts,tsx,html}", "**/node_modules/**");
+  for (const file of nonCssFiles) {
+    const content = await vscode.workspace.fs.readFile(file);
+    const fileContent = Buffer.from(content).toString("utf8");
+    const nonCssRegex = /(?:class|className)=(?:{`([^`]+)`}|["']([^"']+)["'])|(?<=\bid\s*=\s*["'])([\w-]+)(?=["'])/g;
+    let nonCssMatch;
+    while ((nonCssMatch = nonCssRegex.exec(fileContent)) !== null) {
+      const classNames = (nonCssMatch[1] || nonCssMatch[2] || nonCssMatch[3] || '').split(/\s+/).filter(cls => cls && !cls.includes("$") && /^[\w-]+$/.test(cls));
+      for (const className of classNames) {
+        const info = classMap.get(className);
+        if (info) {
+          info.usageCount++;
         }
       }
     }
-
-    // Set new decorations
-    editor.setDecorations(currentDecorationType, decorations);
-    console.log(`CSS classes and IDs counted: ${classMap.size}`);
-  } catch (error) {
-    console.error("Error in countCssClasses:", error);
-    vscode.window.showErrorMessage(
-      `Error counting CSS classes and IDs: ${error}`
-    );
   }
+
+  // Process current file
+  const isCSS = document.languageId === 'css';
+  const regex = isCSS
+    ? /([.#])([\w-]+)\s*{/g
+    : /(?:class|className)=(?:{`([^`]+)`}|["']([^"']+)["'])|(?<=\bid\s*=\s*["'])([\w-]+)(?=["'])/g;
+
+  const decorations: vscode.DecorationOptions[] = [];
+  const decoratedRanges = new Set<string>();
+
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const classNames = isCSS
+      ? [match[2]]
+      : (match[1] || match[2] || match[3] || '').split(/\s+/).filter(cls => cls && !cls.includes("$") && /^[\w-]+$/.test(cls));
+
+    for (const className of classNames) {
+      let info = classMap.get(className);
+      if (!info) {
+        info = { cssCount: 0, usageCount: 0, type: isCSS ? (match[1] === '.' ? 'class' : 'id') : 'class' };
+        classMap.set(className, info);
+      }
+
+      const startPos = document.positionAt(match.index + match[0].indexOf(className));
+      const endPos = document.positionAt(match.index + match[0].indexOf(className) + className.length);
+      const range = new vscode.Range(startPos, endPos);
+      const rangeKey = `${range.start.line},${range.start.character},${range.end.line},${range.end.character}`;
+
+      if (!decoratedRanges.has(rangeKey)) {
+        const hoverMessage = new vscode.MarkdownString()
+          .appendMarkdown(`**${info.type.toUpperCase()}**: \`${className}\`\n\n`)
+          .appendMarkdown(`Defined in CSS: ${info.cssCount} time${info.cssCount !== 1 ? 's' : ''}\n`)
+          .appendMarkdown(`Used in other files: ${info.usageCount} time${info.usageCount !== 1 ? 's' : ''}`);
+
+        if (info.cssCount > 1 && info.type === "id") {
+          hoverMessage.appendMarkdown("\n\n**Warning**: IDs should be unique");
+        }
+
+        const decorationText = isCSS ? `  (${info.usageCount})` : `  (${info.cssCount})`;
+
+        decorations.push({
+          range,
+          hoverMessage,
+          renderOptions: {
+            after: {
+              contentText: decorationText,
+              color: info.type === "class" ? "rgba(153, 153, 153, 0.7)" : "rgba(255, 165, 0, 0.7)",
+              fontWeight: "normal",
+            },
+          },
+        });
+        decoratedRanges.add(rangeKey);
+      }
+    }
+  }
+
+  if (currentDecorationType) {
+    currentDecorationType.dispose();
+  }
+  currentDecorationType = vscode.window.createTextEditorDecorationType({});
+  editor.setDecorations(currentDecorationType, decorations);
 }
 
 function debounce(func: Function, wait: number): (...args: any[]) => void {
