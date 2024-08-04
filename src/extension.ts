@@ -1,115 +1,84 @@
 import * as vscode from "vscode";
-
+import { countDefinitions, countUsages } from "./countLogic";
 let currentDecorationType: vscode.TextEditorDecorationType | undefined;
 
 async function countDefinitionsAndUsages() {
   const editor = vscode.window.activeTextEditor;
-  if (!editor || editor.document.languageId !== 'python') {
+  if (!editor || editor.document.languageId !== "python") {
     console.log("Not a Python file, skipping");
     return;
   }
 
   console.log("Processing Python file");
   const document = editor.document;
-  const text = document.getText();
-
-  const functionDefinitions = new Map<string, string>(); // function name to file path
-  const functionUsages = new Map<string, Set<string>>();
-  const importedFunctions = new Map<string, Set<string>>();
-
-  // Get the workspace folder
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
   if (!workspaceFolder) {
     console.log("No workspace folder found");
     return;
   }
 
-  // Define patterns to exclude package directories
   const excludePatterns = [
-    "**/venv/**", "**/env/**", "**/.venv/**", "**/node_modules/**",
-    "**/site-packages/**", "**/lib/**", "**/libs/**", "**/build/**", "**/dist/**"
+    "**/venv/**",
+    "**/env/**",
+    "**/.venv/**",
+    "**/node_modules/**",
+    "**/site-packages/**",
+    "**/lib/**",
+    "**/libs/**",
+    "**/build/**",
+    "**/dist/**",
   ];
 
-  // Count function definitions and usages across all Python files in the workspace
   const pythonFiles = await vscode.workspace.findFiles(
     new vscode.RelativePattern(workspaceFolder, "**/*.py"),
-    `{${excludePatterns.join(',')}}`
+    `{${excludePatterns.join(",")}}`
   );
   console.log(`Found ${pythonFiles.length} Python files`);
 
-  for (const file of pythonFiles) {
-    const content = await vscode.workspace.fs.readFile(file);
-    const fileContent = Buffer.from(content).toString("utf8");
-
-    // Function definition regex
-    const funcDefRegex = /def\s+(\w+)\s*\(/g;
-    let defMatch;
-    while ((defMatch = funcDefRegex.exec(fileContent)) !== null) {
-      const funcName = defMatch[1];
-      functionDefinitions.set(funcName, file.fsPath);
-    }
-
-    // Import regex
-    const importRegex = /from\s+(\S+)\s+import\s+(.+)/g;
-    let importMatch;
-    while ((importMatch = importRegex.exec(fileContent)) !== null) {
-      const imports = importMatch[2].split(',').map(i => i.trim());
-      for (const imp of imports) {
-        if (!importedFunctions.has(imp)) {
-          importedFunctions.set(imp, new Set());
-        }
-        importedFunctions.get(imp)!.add(file.fsPath);
-      }
-    }
-
-    // Function usage regex
-    const funcUsageRegex = /\b(\w+)\s*\(/g;
-    let usageMatch;
-    while ((usageMatch = funcUsageRegex.exec(fileContent)) !== null) {
-      const funcName = usageMatch[1];
-      if (functionDefinitions.has(funcName) || importedFunctions.has(funcName)) {
-        if (!functionUsages.has(funcName)) {
-          functionUsages.set(funcName, new Set());
-        }
-        functionUsages.get(funcName)!.add(file.fsPath);
-      }
-    }
-  }
-
-  // Merge imported function usages with regular function usages
-  for (const [funcName, files] of importedFunctions.entries()) {
-    if (functionDefinitions.has(funcName)) {
-      const usages = functionUsages.get(funcName) || new Set();
-      for (const file of files) {
-        usages.add(file);
-      }
-      functionUsages.set(funcName, usages);
-    }
-  }
+  const functionDefinitions = await countDefinitions(pythonFiles);
+  const functionUsages = await countUsages(pythonFiles, functionDefinitions);
 
   const decorations: vscode.DecorationOptions[] = [];
+  const text = document.getText();
   const funcDefRegex = /def\s+(\w+)\s*\(/g;
   let match;
 
   while ((match = funcDefRegex.exec(text)) !== null) {
     const funcName = match[1];
-    const startPos = document.positionAt(match.index + 4); // 4 is the length of "def "
+    const startPos = document.positionAt(match.index + 4);
     const endPos = document.positionAt(match.index + 4 + funcName.length);
     const range = new vscode.Range(startPos, endPos);
 
-    const usages = functionUsages.get(funcName) || new Set();
-    const definitionFile = functionDefinitions.get(funcName);
-    const usageCount = definitionFile ? usages.size - (usages.has(definitionFile) ? 1 : 0) : usages.size;
+    const definitionCount = functionDefinitions.get(funcName)?.length || 0;
+    const usageCount = functionUsages.get(funcName) || 0;
 
-    console.log(`Decorating function: ${funcName} at line ${startPos.line + 1}, used in ${usageCount} files`);
+    let decorationText: string;
+    let hoverMessage: string;
+
+    if (definitionCount > 1) {
+      decorationText = " Duplicate definition ";
+      hoverMessage = `Warning: ${definitionCount} definitions found`;
+    } else {
+      decorationText = `  (${usageCount})`;
+      hoverMessage = `Used in: ${usageCount} place(s)`;
+    }
+
+    console.log(
+      `Decorating function: ${funcName} at line ${
+        startPos.line + 1
+      }, ${hoverMessage}`
+    );
 
     decorations.push({
       range,
-      hoverMessage: `Used in: ${usageCount} file(s)`,
+      hoverMessage,
       renderOptions: {
         after: {
-          contentText: `  (${usageCount})`,
-          color: "rgba(65, 105, 225, 0.7)", // Blue color
+          contentText: decorationText,
+          color:
+            definitionCount > 1
+              ? "rgba(255, 165, 0, 0.7)"
+              : "rgba(65, 105, 225, 0.7)",
           fontWeight: "normal",
         },
       },
