@@ -4,12 +4,21 @@ let currentDecorationType: vscode.TextEditorDecorationType | undefined;
 
 async function countDefinitionsAndUsages() {
   const editor = vscode.window.activeTextEditor;
-  if (!editor || editor.document.languageId !== "python") {
-    console.log("Not a Python file, skipping");
+  if (
+    !editor ||
+    ![
+      "python",
+      "javascript",
+      "typescript",
+      "javascriptreact",
+      "typescriptreact",
+    ].includes(editor.document.languageId)
+  ) {
+    console.log("Not a supported file type, skipping");
     return;
   }
 
-  console.log("Processing Python file");
+  console.log(`Processing ${editor.document.languageId} file`);
   const document = editor.document;
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
   if (!workspaceFolder) {
@@ -29,60 +38,69 @@ async function countDefinitionsAndUsages() {
     "**/dist/**",
   ];
 
-  const pythonFiles = await vscode.workspace.findFiles(
-    new vscode.RelativePattern(workspaceFolder, "**/*.py"),
+  const fileExtensions = ["py", "js", "ts", "jsx", "tsx"];
+  const files = await vscode.workspace.findFiles(
+    new vscode.RelativePattern(
+      workspaceFolder,
+      `**/*.{${fileExtensions.join(",")}}`
+    ),
     `{${excludePatterns.join(",")}}`
   );
-  console.log(`Found ${pythonFiles.length} Python files`);
+  console.log(`Found ${files.length} files`);
 
-  const functionDefinitions = await countDefinitions(pythonFiles);
-  const functionUsages = await countUsages(pythonFiles, functionDefinitions);
+  const functionDefinitions = await countDefinitions(files);
+  const functionUsages = await countUsages(files, functionDefinitions);
 
   const decorations: vscode.DecorationOptions[] = [];
   const text = document.getText();
-  const funcDefRegex = /def\s+(\w+)\s*\(/g;
+  const funcDefRegex = getFunctionDefinitionRegex(editor.document.languageId);
   let match;
 
   while ((match = funcDefRegex.exec(text)) !== null) {
-    const funcName = match[1];
-    const startPos = document.positionAt(match.index + 4);
-    const endPos = document.positionAt(match.index + 4 + funcName.length);
-    const range = new vscode.Range(startPos, endPos);
+    const funcName = match[1] || match[2] || match[3];
+    if (funcName) {
+      const startPos = document.positionAt(
+        match.index + match[0].indexOf(funcName)
+      );
+      const endPos = document.positionAt(startPos.character + funcName.length);
+      const range = new vscode.Range(startPos, endPos);
 
-    const definitionCount = functionDefinitions.get(funcName)?.length || 0;
-    const usageCount = functionUsages.get(funcName) || 0;
+      const definitionCount = functionDefinitions.get(funcName)?.length || 0;
+      const usageCount = functionUsages.get(funcName) || 0;
 
-    let decorationText: string;
-    let hoverMessage: string;
+      let decorationText: string;
+      let hoverMessage: string;
 
-    if (definitionCount > 1) {
-      decorationText = " Duplicate definition ";
-      hoverMessage = `Warning: ${definitionCount} definitions found`;
-    } else {
-      decorationText = `  (${usageCount})`;
-      hoverMessage = `Used in: ${usageCount} place(s)`;
-    }
+      if (definitionCount > 1) {
+        decorationText = " Duplicate definition ";
+        hoverMessage = `Warning: ${definitionCount} definitions found`;
+      } else {
+        decorationText = usageCount > 0 ? `  (${usageCount})` : "No usages";
+        hoverMessage =
+          usageCount > 0 ? `Used in ${usageCount} place(s)` : "No usage found";
+      }
 
-    console.log(
-      `Decorating function: ${funcName} at line ${
-        startPos.line + 1
-      }, ${hoverMessage}`
-    );
+      console.log(
+        `Decorating function: ${funcName} at line ${
+          startPos.line + 1
+        }, ${hoverMessage}`
+      );
 
-    decorations.push({
-      range,
-      hoverMessage,
-      renderOptions: {
-        after: {
-          contentText: decorationText,
-          color:
-            definitionCount > 1
-              ? "rgba(255, 165, 0, 0.7)"
-              : "rgba(65, 105, 225, 0.7)",
-          fontWeight: "normal",
+      decorations.push({
+        range,
+        hoverMessage,
+        renderOptions: {
+          after: {
+            contentText: decorationText,
+            color:
+              definitionCount > 1
+                ? "rgba(255, 165, 0, 0.7)"
+                : "rgba(65, 105, 225, 0.7)",
+            fontWeight: "normal",
+          },
         },
-      },
-    });
+      });
+    }
   }
 
   console.log(`Created ${decorations.length} decorations`);
@@ -93,6 +111,20 @@ async function countDefinitionsAndUsages() {
   currentDecorationType = vscode.window.createTextEditorDecorationType({});
   editor.setDecorations(currentDecorationType, decorations);
   console.log("Decorations applied");
+}
+
+export function getFunctionDefinitionRegex(languageId: string): RegExp {
+  switch (languageId) {
+    case "python":
+      return /def\s+(\w+)\s*\(/g;
+    case "javascript":
+    case "typescript":
+    case "javascriptreact":
+    case "typescriptreact":
+      return /(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:function|\([^)]*\)\s*=>|async\s*(?:function|\([^)]*\)\s*=>))|(?:const|let|var)\s+(\w+)\s*=\s*\([^)]*\)\s*=>|\b(\w+)\s*:\s*(?:function|\([^)]*\)\s*=>)|(?:class\s+(\w+)|const\s+(\w+)\s*=\s*class))/g;
+    default:
+      return /(?:)/g; // Empty regex for unsupported file types
+  }
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -111,7 +143,16 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       console.log("Active editor changed");
-      if (editor && editor.document.languageId === "python") {
+      if (
+        editor &&
+        [
+          "python",
+          "javascript",
+          "typescript",
+          "javascriptreact",
+          "typescriptreact",
+        ].includes(editor.document.languageId)
+      ) {
         countDefinitionsAndUsages();
       }
     })
@@ -122,7 +163,13 @@ export function activate(context: vscode.ExtensionContext) {
       console.log("Document changed");
       if (
         event.document === vscode.window.activeTextEditor?.document &&
-        event.document.languageId === "python"
+        [
+          "python",
+          "javascript",
+          "typescript",
+          "javascriptreact",
+          "typescriptreact",
+        ].includes(event.document.languageId)
       ) {
         countDefinitionsAndUsages();
       }
@@ -131,7 +178,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   if (
     vscode.window.activeTextEditor &&
-    vscode.window.activeTextEditor.document.languageId === "python"
+    [
+      "python",
+      "javascript",
+      "typescript",
+      "javascriptreact",
+      "typescriptreact",
+    ].includes(vscode.window.activeTextEditor.document.languageId)
   ) {
     console.log("Initial count triggered");
     countDefinitionsAndUsages();
