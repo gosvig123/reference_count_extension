@@ -11,7 +11,7 @@ function countFunctionUsagesInFile(
   let usageMatch;
 
   while ((usageMatch = funcUsageRegex.exec(fileContent)) !== null) {
-    const funcName = usageMatch[1];
+    const funcName = usageMatch[1] || usageMatch[2]; // Check both capture groups
     if (functionDefinitions.has(funcName)) {
       functionUsages.set(funcName, (functionUsages.get(funcName) || 0) + 1);
     }
@@ -92,7 +92,9 @@ export async function countDefinitions(
         if (!functionDefinitions.has(funcName)) {
           functionDefinitions.set(funcName, []);
         }
-        functionDefinitions.get(funcName)!.push(file.fsPath);
+        if (!functionDefinitions.get(funcName)!.includes(file.fsPath)) {
+          functionDefinitions.get(funcName)!.push(file.fsPath);
+        }
       }
     }
   }
@@ -125,7 +127,7 @@ function getFunctionUsageRegex(languageId: string): RegExp {
     case "typescript":
     case "javascriptreact":
     case "typescriptreact":
-      return /(?<!(?:function|class|const|let|var)\s+)(\w+)\s*\(/g;
+      return /(?<!(?:function|class|const|let|var)\s+)(\w+)\s*\(|<(\w+)(?:\s|\/?>|\/>)/g;
     default:
       return /(?:)/g; // Empty regex for unsupported file types
   }
