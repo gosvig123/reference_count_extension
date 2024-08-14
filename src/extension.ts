@@ -1,7 +1,9 @@
 import * as vscode from "vscode";
-import { countDefinitions, countUsages } from "./countLogic";
-import { excludePatterns, acceptedLanguages, fileExtensions } from "./constants";
+import {  acceptedLanguages } from "./constants";
 import { hasValidFiles, createDecorationOptions, applyDecorations, DecorationData, disposeDecorations } from "./utils";
+import { Indexer } from "./indexer";
+import { getFunctionDefinitionRegex } from "./regEx";
+let indexer: Indexer;
 
 async function countDefinitionsAndUsages() {
   const validFiles = hasValidFiles();
@@ -9,17 +11,11 @@ async function countDefinitionsAndUsages() {
     return;
   }
 
-  const { workspaceFolder, document, editor } = validFiles;
+  const { document, editor } = validFiles;
 
-  const files = await vscode.workspace.findFiles(
-    new vscode.RelativePattern(workspaceFolder, `**/*.{${fileExtensions.join(",")}}`),
-    `{${excludePatterns.join(",")}}`
-  );
+  const { definitions, usages } = await indexer.getIndexedData();
 
-  const functionDefinitions = await countDefinitions(files);
-  const functionUsages = await countUsages(files, functionDefinitions);
-
-  const decorationData = createDecorationData(document, editor.document.languageId, functionDefinitions, functionUsages);
+  const decorationData = createDecorationData(document, editor.document.languageId, definitions, usages);
   const decorations = decorationData.map(createDecorationOptions);
 
   applyDecorations(editor, decorations);
@@ -56,22 +52,11 @@ function createDecorationData(
   return decorationData;
 }
 
-export function getFunctionDefinitionRegex(languageId: string): RegExp {
-  switch (languageId) {
-    case "python":
-      return /def\s+(\w+)\s*\(/g;
-    case "javascript":
-    case "typescript":
-    case "javascriptreact":
-    case "typescriptreact":
-      return /(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:function|\([^)]*\)\s*=>|async\s*(?:function|\([^)]*\)\s*=>))|(?:const|let|var)\s+(\w+)\s*=\s*\([^)]*\)\s*=>|\b(\w+)\s*:\s*(?:function|\([^)]*\)\s*=>)|(?:class\s+(\w+)|const\s+(\w+)\s*=\s*class)|(?:const|let|var)\s+(\w+)\s*=\s*React\.(?:memo|forwardRef)\()/g;
-    default:
-      return /(?:)/g; // Empty regex for unsupported file types
-  }
-}
-
 export function activate(context: vscode.ExtensionContext) {
   console.log("Extension activated");
+
+  indexer = new Indexer(context);
+  indexer.indexWorkspace();
 
   let disposable = vscode.commands.registerCommand(
     "extension.countDefinitionsAndUsages",
@@ -94,7 +79,7 @@ export function activate(context: vscode.ExtensionContext) {
         event.document === vscode.window.activeTextEditor?.document &&
         acceptedLanguages.includes(event.document.languageId)
       ) {
-        countDefinitionsAndUsages();
+        indexer.updateFile(event.document.uri).then(() => countDefinitionsAndUsages());
       }
     })
   );

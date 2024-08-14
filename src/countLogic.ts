@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { getFunctionDefinitionRegex } from "./extension";
+import { getFunctionDefinitionRegex } from "./regEx";
 
 function countFunctionUsagesInFile(
   fileContent: string,

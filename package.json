@@ -1,8 +1,8 @@
 {
   "name": "css-class-counter",
-  "displayName": "CSS Class Counter",
-  "description": "Counts and displays the usage of CSS classes in your code",
-  "version": "0.0.4",
+  "displayName": "Reference Counter",
+  "description": "Counts and displays the usage of references in your code",
+  "version": "0.0.5",
   "engines": {
     "vscode": "^1.91.0"
   },
