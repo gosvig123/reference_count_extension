@@ -1,4 +1,6 @@
+import { minimatch } from 'minimatch';
 import * as vscode from "vscode";
+import { excludePatterns } from "./constants";
 import { getFunctionDefinitionRegex } from "./regEx";
 
 function countFunctionUsagesInFile(
@@ -11,8 +13,8 @@ function countFunctionUsagesInFile(
   let usageMatch;
 
   while ((usageMatch = funcUsageRegex.exec(fileContent)) !== null) {
-    const funcName = usageMatch[1] || usageMatch[2]; // Check both capture groups
-    if (functionDefinitions.has(funcName)) {
+    const funcName = usageMatch[1] || usageMatch[2] || usageMatch[3]; // Check all capture groups
+    if (funcName && functionDefinitions.has(funcName)) {
       functionUsages.set(funcName, (functionUsages.get(funcName) || 0) + 1);
     }
   }
@@ -44,6 +46,11 @@ export async function countUsages(
   const totalFunctionUsages = new Map<string, number>();
 
   for (const file of files) {
+    // Check if the file is in an excluded directory
+    if (excludePatterns.some(pattern => minimatch(file.fsPath, pattern, { dot: true }))) {
+      continue;
+    }
+
     const content = await vscode.workspace.fs.readFile(file);
     const fileContent = Buffer.from(content).toString("utf8");
     const languageId = getLanguageIdFromUri(file);
@@ -81,23 +88,16 @@ export async function countDefinitions(
     const funcDefRegex = getFunctionDefinitionRegex(languageId);
     let defMatch;
     while ((defMatch = funcDefRegex.exec(fileContent)) !== null) {
-      const funcName =
-        defMatch[1] ||
-        defMatch[2] ||
-        defMatch[3] ||
-        defMatch[4] ||
-        defMatch[5] ||
-        defMatch[6];
+      const funcName = defMatch[1] || defMatch[2] || defMatch[3] || defMatch[4] || defMatch[5] || defMatch[6] || defMatch[7] || defMatch[8];
       if (funcName) {
         if (!functionDefinitions.has(funcName)) {
           functionDefinitions.set(funcName, []);
         }
-        if (!functionDefinitions.get(funcName)!.includes(file.fsPath)) {
-          functionDefinitions.get(funcName)!.push(file.fsPath);
-        }
+        functionDefinitions.get(funcName)!.push(file.fsPath);
       }
     }
   }
+  console.log("Function Definitions:", functionDefinitions);
   return functionDefinitions;
 }
 
@@ -127,7 +127,7 @@ function getFunctionUsageRegex(languageId: string): RegExp {
     case "typescript":
     case "javascriptreact":
     case "typescriptreact":
-      return /(?<!(?:function|class|const|let|var)\s+)(\w+)\s*\(|<(\w+)(?:\s|\/?>|\/>)/g;
+      return /(?<!(?:function|class|const|let|var)\s+)(\w+)\s*\(|<(\w+)(?:\s|\/?>|\/>)|new\s+(\w+)/g;
     default:
       return /(?:)/g; // Empty regex for unsupported file types
   }

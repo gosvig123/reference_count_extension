@@ -6,7 +6,7 @@ export function getFunctionDefinitionRegex(languageId: string): RegExp {
     case "typescript":
     case "javascriptreact":
     case "typescriptreact":
-      return /(?<!import\s*{[^}]*)\b(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:function|\([^)]*\)\s*=>|async\s*(?:function|\([^)]*\)\s*=>))|(?:const|let|var)\s+(\w+)\s*=\s*\([^)]*\)\s*=>|\b(\w+)\s*:\s*(?:function|\([^)]*\)\s*=>)|(?:class\s+(\w+)|const\s+(\w+)\s*=\s*class)|(?:const|let|var)\s+(\w+)\s*=\s*React\.(?:memo|forwardRef)\()|(?:export\s+(?:async\s+)?function\s+(\w+))/g;
+      return /(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:function|\([^)]*\)\s*=>)|class\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*class|(?:const|let|var)\s+(\w+)\s*=\s*React\.(?:memo|forwardRef)\(|(?:const|let|var)\s+(\w+)\s*=\s*\([^)]*\)\s*=>|(\w+)\s*:\s*(?:function|\([^)]*\)\s*=>)|export\s+(?:async\s+)?function\s+(\w+))/g;
     default:
       return /(?:)/g; // Empty regex for unsupported file types
   }
