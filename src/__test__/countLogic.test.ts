@@ -116,4 +116,225 @@ describe('countLogic', () => {
 
     expect(jsResult.get('greet')).toBe(1);
   });
+
+  test('countUsages should handle functions with no usages', async () => {
+    const mockDefinitions = new Map([
+      ['unusedFunc', ['mockFile.js']],
+      ['usedFunc', ['mockFile.js']],
+    ]);
+
+    const mockContent = `
+      function unusedFunc() {}
+      function usedFunc() {}
+      usedFunc();
+    `;
+
+    (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(Buffer.from(mockContent));
+
+    const result = await countUsages([vscode.Uri.file('mockFile.js')], mockDefinitions);
+
+    expect(result.get('unusedFunc')).toBe(0);
+    expect(result.get('usedFunc')).toBe(1);
+  });
+
+  test('countUsages should handle multiple files', async () => {
+    const mockDefinitions = new Map([
+      ['funcA', ['file1.js', 'file2.js']],
+      ['funcB', ['file1.js']],
+      ['funcC', ['file2.js']],
+    ]);
+
+    const mockContent1 = `
+      function funcA() {}
+      function funcB() {}
+      funcA();
+      funcB();
+    `;
+
+    const mockContent2 = `
+      function funcA() {}
+      function funcC() {}
+      funcA();
+      funcC();
+      funcC();
+    `;
+
+    (vscode.workspace.fs.readFile as jest.Mock).mockImplementation((uri: vscode.Uri) => {
+      if (uri.fsPath.endsWith('file1.js')) {
+        return Promise.resolve(Buffer.from(mockContent1));
+      } else if (uri.fsPath.endsWith('file2.js')) {
+        return Promise.resolve(Buffer.from(mockContent2));
+      }
+      return Promise.reject(new Error('Unsupported file'));
+    });
+
+    const result = await countUsages(
+      [vscode.Uri.file('file1.js'), vscode.Uri.file('file2.js')],
+      mockDefinitions
+    );
+
+    expect(result.get('funcA')).toBe(2);
+    expect(result.get('funcB')).toBe(1);
+    expect(result.get('funcC')).toBe(2);
+  });
+
+  test('countUsages should handle functions with the same name in different files', async () => {
+    const mockDefinitions = new Map([
+      ['func', ['file1.js', 'file2.js']],
+    ]);
+
+    const mockContent1 = `
+      function func() {}
+      func();
+    `;
+
+    const mockContent2 = `
+      function func() {}
+      func();
+      func();
+    `;
+
+    (vscode.workspace.fs.readFile as jest.Mock).mockImplementation((uri: vscode.Uri) => {
+      if (uri.fsPath.endsWith('file1.js')) {
+        return Promise.resolve(Buffer.from(mockContent1));
+      } else if (uri.fsPath.endsWith('file2.js')) {
+        return Promise.resolve(Buffer.from(mockContent2));
+      }
+      return Promise.reject(new Error('Unsupported file'));
+    });
+
+    const result = await countUsages(
+      [vscode.Uri.file('file1.js'), vscode.Uri.file('file2.js')],
+      mockDefinitions
+    );
+
+    expect(result.get('func')).toBe(3);
+  });
+
+  test('countUsages should not count function definitions as usages', async () => {
+    const mockDefinitions = new Map([
+      ['funcA', ['mockFile.js']],
+      ['funcB', ['mockFile.js']],
+    ]);
+
+    const mockContent = `
+      function funcA() {
+        funcB();
+      }
+      function funcB() {
+        funcA();
+      }
+      funcA();
+    `;
+
+    (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(Buffer.from(mockContent));
+
+    const result = await countUsages([vscode.Uri.file('mockFile.js')], mockDefinitions);
+
+    expect(result.get('funcA')).toBe(2);
+    expect(result.get('funcB')).toBe(1);
+  });
+
+  test('countUsages should handle arrow functions and class methods', async () => {
+    const mockDefinitions = new Map([
+      ['arrowFunc', ['mockFile.js']],
+      ['classMethod', ['mockFile.js']],
+    ]);
+
+    const mockContent = `
+      const arrowFunc = () => {};
+      class MyClass {
+        classMethod() {}
+      }
+      arrowFunc();
+      const instance = new MyClass();
+      instance.classMethod();
+      instance.classMethod();
+    `;
+
+    (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(Buffer.from(mockContent));
+
+    const result = await countUsages([vscode.Uri.file('mockFile.js')], mockDefinitions);
+
+    expect(result.get('arrowFunc')).toBe(1);
+    expect(result.get('classMethod')).toBe(2);
+  });
+
+  test('countUsages should handle nested function calls', async () => {
+    const mockDefinitions = new Map([
+      ['outer', ['mockFile.js']],
+      ['inner', ['mockFile.js']],
+    ]);
+
+    const mockContent = `
+      function outer() {
+        inner();
+      }
+      function inner() {}
+      outer();
+      outer();
+    `;
+
+    (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(Buffer.from(mockContent));
+
+    const result = await countUsages([vscode.Uri.file('mockFile.js')], mockDefinitions);
+
+    expect(result.get('outer')).toBe(2);
+    expect(result.get('inner')).toBe(1);
+  });
+
+  test('countUsages should handle Python-specific syntax', async () => {
+    const mockDefinitions = new Map([
+      ['python_func', ['mockFile.py']],
+      ['PythonClass', ['mockFile.py']],
+      ['class_method', ['mockFile.py']],
+    ]);
+
+    const mockContent = `
+def python_func():
+    pass
+
+class PythonClass:
+    def class_method(self):
+        pass
+
+python_func()
+obj = PythonClass()
+obj.class_method()
+obj.class_method()
+  `;
+
+    (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(Buffer.from(mockContent));
+
+    const result = await countUsages([vscode.Uri.file('mockFile.py')], mockDefinitions);
+
+    expect(result.get('python_func')).toBe(1);
+    expect(result.get('PythonClass')).toBe(1);
+    expect(result.get('class_method')).toBe(2);
+  });
+
+  test('countUsages should handle empty files and files with no function usages', async () => {
+    const mockDefinitions = new Map([
+      ['unusedFunc', ['emptyFile.js', 'noUsageFile.js']],
+    ]);
+
+    const emptyContent = '';
+    const noUsageContent = 'const x = 5; console.log(x);';
+
+    (vscode.workspace.fs.readFile as jest.Mock).mockImplementation((uri: vscode.Uri) => {
+      if (uri.fsPath.endsWith('emptyFile.js')) {
+        return Promise.resolve(Buffer.from(emptyContent));
+      } else if (uri.fsPath.endsWith('noUsageFile.js')) {
+        return Promise.resolve(Buffer.from(noUsageContent));
+      }
+      return Promise.reject(new Error('Unsupported file'));
+    });
+
+    const result = await countUsages(
+      [vscode.Uri.file('emptyFile.js'), vscode.Uri.file('noUsageFile.js')],
+      mockDefinitions
+    );
+
+    expect(result.get('unusedFunc')).toBe(0);
+  });
 });
