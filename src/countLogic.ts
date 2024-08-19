@@ -1,4 +1,4 @@
-import { minimatch } from 'minimatch';
+import { minimatch } from "minimatch";
 import * as vscode from "vscode";
 import { excludePatterns } from "./constants";
 import { getFunctionDefinitions, getFunctionUsages } from "./regEx";
@@ -15,7 +15,7 @@ export async function countUsages(
   }
 
   for (const file of files) {
-    if (excludePatterns.some(pattern => minimatch(file.fsPath, pattern, { dot: true }))) {
+    if (excludePatterns.some((pattern) => minimatch(file.fsPath, pattern, { dot: true }))) {
       continue;
     }
 
@@ -35,13 +35,11 @@ export async function countUsages(
   return totalFunctionUsages;
 }
 
-export async function countDefinitions(
-  files: vscode.Uri[]
-): Promise<Map<string, string[]>> {
+export async function countDefinitions(files: vscode.Uri[]): Promise<Map<string, string[]>> {
   const functionDefinitions = new Map<string, string[]>();
   for (const file of files) {
     const content = await vscode.workspace.fs.readFile(file);
-    const fileContent = Buffer.from(content).toString('utf8');
+    const fileContent = Buffer.from(content).toString("utf8");
     const languageId = getLanguageIdFromUri(file);
     const funcDefs = getFunctionDefinitions(languageId, fileContent);
     for (const funcName of funcDefs) {
