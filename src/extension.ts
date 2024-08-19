@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import {  acceptedLanguages } from "./constants";
 import { hasValidFiles, createDecorationOptions, applyDecorations, DecorationData, disposeDecorations } from "./utils";
 import { Indexer } from "./indexer";
-import { getFunctionDefinitionRegex } from "./regEx";
+import { getFunctionDefinitions } from "./regEx";
 let indexer: Indexer;
 
 async function countDefinitionsAndUsages() {
@@ -29,14 +29,14 @@ function createDecorationData(
 ): DecorationData[] {
   const decorationData: DecorationData[] = [];
   const text = document.getText();
-  const funcDefRegex = getFunctionDefinitionRegex(languageId);
-  let match;
+  const funcDefs = getFunctionDefinitions(languageId, text);
 
-  while ((match = funcDefRegex.exec(text)) !== null) {
-    const funcName = match[1] || match[2] || match[3];
-    if (funcName) {
-      const startPos = document.positionAt(match.index + match[0].indexOf(funcName));
-      const endPos = document.positionAt(startPos.character + funcName.length);
+  for (const funcName of funcDefs) {
+    const regex = new RegExp(`\\b${funcName}\\b`, 'g');
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      const startPos = document.positionAt(match.index);
+      const endPos = document.positionAt(match.index + funcName.length);
       const range = new vscode.Range(startPos, endPos);
 
       const definitionCount = functionDefinitions.get(funcName)?.length || 0;
