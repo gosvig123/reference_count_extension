@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { countDefinitions, countUsages } from "./countLogic";
 import { excludePatterns, fileExtensions } from "./constants";
+import { countDefinitions, countUsages } from "./countLogic";
 
 export class Indexer {
   private definitions: Map<string, string[]> = new Map();
@@ -18,18 +18,13 @@ export class Indexer {
     await this.indexingPromise;
   }
 
-  private async doIndexing(
-    workspaceFolders: readonly vscode.WorkspaceFolder[]
-  ) {
+  private async doIndexing(workspaceFolders: readonly vscode.WorkspaceFolder[]) {
     this.definitions = new Map();
     this.usages = new Map();
 
     for (const folder of workspaceFolders) {
       const files = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(
-          folder,
-          `**/*.{${fileExtensions.join(",")}}`
-        ),
+        new vscode.RelativePattern(folder, `**/*.{${fileExtensions.join(",")}}`),
         `{${excludePatterns.join(",")}}`
       );
 
@@ -97,10 +92,7 @@ export class Indexer {
     if (!workspaceFolders) return;
 
     const allFiles = await vscode.workspace.findFiles(
-      new vscode.RelativePattern(
-        workspaceFolders[0],
-        `**/*.{${fileExtensions.join(",")}}`
-      ),
+      new vscode.RelativePattern(workspaceFolders[0], `**/*.{${fileExtensions.join(",")}}`),
       `{${excludePatterns.join(",")}}`
     );
 
