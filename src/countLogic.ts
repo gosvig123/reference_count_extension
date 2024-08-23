@@ -31,7 +31,6 @@ export async function countUsages(
     }
   }
 
-  console.log("totalFunctionUsages", totalFunctionUsages);
   return totalFunctionUsages;
 }
 
