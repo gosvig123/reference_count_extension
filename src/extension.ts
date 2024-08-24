@@ -1,9 +1,7 @@
 import * as vscode from "vscode";
 import {  acceptedLanguages } from "./constants";
 import { hasValidFiles, createDecorationOptions, applyDecorations, DecorationData, disposeDecorations } from "./utils";
-import { Indexer } from "./indexer";
 import { getFunctionDefinitions } from "./regEx";
-let indexer: Indexer;
 
 async function countDefinitionsAndUsages() {
   const validFiles = hasValidFiles();
@@ -13,13 +11,24 @@ async function countDefinitionsAndUsages() {
 
   const { document, editor } = validFiles;
 
-  const { definitions, usages } = await indexer.getIndexedData();
+  const text = document.getText();
+  const languageId = editor.document.languageId;
+  const funcDefs = getFunctionDefinitions(languageId, text);
 
-  const decorationData = createDecorationData(document, editor.document.languageId, definitions, usages);
+  const definitions = new Map<string, string[]>();
+  const usages = new Map<string, number>();
+
+  funcDefs.forEach(funcName => {
+    definitions.set(funcName, [document.uri.fsPath]);
+    usages.set(funcName, 0);
+  });
+
+  const decorationData = createDecorationData(document, languageId, definitions, usages);
   const decorations = decorationData.map(createDecorationOptions);
 
   applyDecorations(editor, decorations);
 }
+
 
 function createDecorationData(
   document: vscode.TextDocument,
@@ -55,9 +64,6 @@ function createDecorationData(
 export function activate(context: vscode.ExtensionContext) {
   console.log("Extension activated");
 
-  indexer = new Indexer(context);
-  indexer.indexWorkspace();
-
   let disposable = vscode.commands.registerCommand(
     "extension.countDefinitionsAndUsages",
     countDefinitionsAndUsages
@@ -79,7 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
         event.document === vscode.window.activeTextEditor?.document &&
         acceptedLanguages.includes(event.document.languageId)
       ) {
-        indexer.updateFile(event.document.uri).then(() => countDefinitionsAndUsages());
+        countDefinitionsAndUsages();
       }
     })
   );
