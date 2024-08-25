@@ -1,5 +1,6 @@
+import { minimatch } from "minimatch";
 import * as vscode from "vscode";
-import { acceptedLanguages } from "./constants";
+import { acceptedLanguages, excludePatterns } from "./constants";
 
 export function hasValidFiles() {
   const editor = vscode.window.activeTextEditor;
@@ -13,10 +14,14 @@ export function hasValidFiles() {
     return false;
   }
 
+  // Check if the current file is in an excluded directory
+  const relativePath = vscode.workspace.asRelativePath(document.uri);
+  if (excludePatterns.some((pattern) => minimatch(relativePath, pattern, { dot: true }))) {
+    return false;
+  }
+
   return { workspaceFolder, document, editor };
 }
-
-
 
 export interface DecorationData {
   range: vscode.Range;
@@ -24,12 +29,10 @@ export interface DecorationData {
   color: string;
 }
 
-export function createDecorationOptions(
-  data: DecorationData
-): vscode.DecorationOptions {
+export function createDecorationOptions(data: DecorationData): vscode.DecorationOptions {
   return {
     range: data.range,
-    renderOptions: {
+renderOptions: {
       after: {
         contentText: data.text,
         color: data.color,
@@ -39,18 +42,17 @@ export function createDecorationOptions(
   };
 }
 
+let currentDecorationType: vscode.TextEditorDecorationType;
+
 export function applyDecorations(
   editor: vscode.TextEditor,
   decorations: vscode.DecorationOptions[]
 ) {
-  if (currentDecorationType) {
-    currentDecorationType.dispose();
+  if (!currentDecorationType) {
+    currentDecorationType = vscode.window.createTextEditorDecorationType({});
   }
-  currentDecorationType = vscode.window.createTextEditorDecorationType({});
   editor.setDecorations(currentDecorationType, decorations);
 }
-
-let currentDecorationType: vscode.TextEditorDecorationType | undefined;
 
 export function disposeDecorations() {
   if (currentDecorationType) {

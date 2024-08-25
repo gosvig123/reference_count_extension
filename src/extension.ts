@@ -1,95 +1,137 @@
 import * as vscode from "vscode";
-import {  acceptedLanguages } from "./constants";
-import { hasValidFiles, createDecorationOptions, applyDecorations, DecorationData, disposeDecorations } from "./utils";
-import { Indexer } from "./indexer";
-import { getFunctionDefinitions } from "./regEx";
-let indexer: Indexer;
+import { acceptedLanguages } from "./constants";
 
-async function countDefinitionsAndUsages() {
+import { disposeDecorations, hasValidFiles } from "./utils";
+export interface OutlineItem {
+  name: string;
+  kind: vscode.SymbolKind;
+  range: vscode.Range;
+  children: OutlineItem[];
+}
+
+let outlineDecorationType: vscode.TextEditorDecorationType;
+
+async function showOutline() {
   const validFiles = hasValidFiles();
-  if (!validFiles) {
-    return;
-  }
+  if (!validFiles) return;
 
   const { document, editor } = validFiles;
 
-  const { definitions, usages } = await indexer.getIndexedData();
+  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+    "vscode.executeDocumentSymbolProvider",
+    document.uri
+  );
 
-  const decorationData = createDecorationData(document, editor.document.languageId, definitions, usages);
-  const decorations = decorationData.map(createDecorationOptions);
+  const outlineItems: OutlineItem[] = [];
 
-  applyDecorations(editor, decorations);
-}
-
-function createDecorationData(
-  document: vscode.TextDocument,
-  languageId: string,
-  functionDefinitions: Map<string, string[]>,
-  functionUsages: Map<string, number>
-): DecorationData[] {
-  const decorationData: DecorationData[] = [];
-  const text = document.getText();
-  const funcDefs = getFunctionDefinitions(languageId, text);
-
-  for (const funcName of funcDefs) {
-    const regex = new RegExp(`\\b${funcName}\\b`, 'g');
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      const startPos = document.positionAt(match.index);
-      const endPos = document.positionAt(match.index + funcName.length);
-      const range = new vscode.Range(startPos, endPos);
-
-      const definitionCount = functionDefinitions.get(funcName)?.length || 0;
-      const usageCount = functionUsages.get(funcName) || 0;
-
-      const text = definitionCount > 1 ? " Duplicate definition " : usageCount > 0 ? `  (${usageCount})` : "No usages";
-      const color = definitionCount > 1 ? "rgba(255, 165, 0, 0.9)" : "rgba(65, 105, 225, 0.9)";
-
-      decorationData.push({ range, text, color });
+  if (symbols) {
+    for (const symbol of symbols) {
+      outlineItems.push(createOutlineItem(symbol));
     }
   }
 
-  return decorationData;
+  // Limit the number of decorations to the visible range
+  const visibleRange = editor.visibleRanges[0];
+  const visibleLines = visibleRange.end.line - visibleRange.start.line + 1;
+  const limitedItems = outlineItems.slice(0, visibleLines);
+
+  const decorations = createOutlineDecorations(limitedItems, editor);
+  editor.setDecorations(outlineDecorationType, decorations);
+
+  console.log(`Applied ${decorations.length} outline decorations`);
 }
 
+function createOutlineItem(symbol: vscode.DocumentSymbol): OutlineItem {
+  return {
+    name: symbol.name,
+    kind: symbol.kind,
+    range: symbol.range,
+    children: symbol.children ? symbol.children.map(createOutlineItem) : [],
+  };
+}
+
+function createOutlineDecorations(
+  items: OutlineItem[],
+  editor: vscode.TextEditor
+): vscode.DecorationOptions[] {
+  const decorations: vscode.DecorationOptions[] = [];
+  const visibleRange = editor.visibleRanges[0];
+
+  items.forEach((item, index) => {
+    const lineIndex = visibleRange.start.line + index;
+
+    if (lineIndex <= visibleRange.end.line) {
+      const decoration = {
+        range: new vscode.Range(lineIndex, 0, lineIndex, 0),
+        renderOptions: {
+          after: {
+            contentText: item.name,
+            color: "rgba(100, 149, 237, 0.7)",
+            fontStyle: "italic",
+            backgroundColor: "transparent",
+            textAlign: "right",
+          },
+        },
+      };
+      decorations.push(decoration);
+    }
+  });
+
+  return decorations;
+}
 export function activate(context: vscode.ExtensionContext) {
   console.log("Extension activated");
 
-  indexer = new Indexer(context);
-  indexer.indexWorkspace();
+  outlineDecorationType = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+  });
 
-  let disposable = vscode.commands.registerCommand(
-    "extension.countDefinitionsAndUsages",
-    countDefinitionsAndUsages
+  context.subscriptions.push(outlineDecorationType);
+
+  const disposable = vscode.commands.registerCommand(
+    "extension.showOutline",
+    debounce(showOutline, 500)
   );
 
   context.subscriptions.push(disposable);
 
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (editor && acceptedLanguages.includes(editor.document.languageId)) {
-        countDefinitionsAndUsages();
+    vscode.window.onDidChangeActiveTextEditor(onActiveEditorChanged),
+    vscode.workspace.onDidChangeTextDocument(onDocumentChanged),
+    vscode.window.onDidChangeTextEditorVisibleRanges((event) => {
+      if (event.textEditor === vscode.window.activeTextEditor) {
+        debounce(showOutline, 100)();
       }
     })
   );
 
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      if (
-        event.document === vscode.window.activeTextEditor?.document &&
-        acceptedLanguages.includes(event.document.languageId)
-      ) {
-        indexer.updateFile(event.document.uri).then(() => countDefinitionsAndUsages());
-      }
-    })
-  );
-
-  if (
-    vscode.window.activeTextEditor &&
-    acceptedLanguages.includes(vscode.window.activeTextEditor.document.languageId)
-  ) {
-    countDefinitionsAndUsages();
+  // Initial call for the current active editor
+  onActiveEditorChanged(vscode.window.activeTextEditor);
+}
+function onActiveEditorChanged(editor: vscode.TextEditor | undefined) {
+  if (editor && acceptedLanguages.includes(editor.document.languageId)) {
+    debounce(showOutline, 500)();
   }
+}
+
+function onDocumentChanged(event: vscode.TextDocumentChangeEvent) {
+  const activeEditor = vscode.window.activeTextEditor;
+  if (
+    activeEditor &&
+    event.document === activeEditor.document &&
+    acceptedLanguages.includes(event.document.languageId)
+  ) {
+    debounce(showOutline, 500)();
+  }
+}
+
+function debounce(func: (...args: any[]) => void, wait: number) {
+  let timeout: NodeJS.Timeout | null = null;
+  return function executedFunction(...args: any[]) {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
 }
 
 export function deactivate() {
