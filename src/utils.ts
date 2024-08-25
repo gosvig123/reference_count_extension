@@ -44,16 +44,6 @@ renderOptions: {
 
 let currentDecorationType: vscode.TextEditorDecorationType;
 
-export function applyDecorations(
-  editor: vscode.TextEditor,
-  decorations: vscode.DecorationOptions[]
-) {
-  if (!currentDecorationType) {
-    currentDecorationType = vscode.window.createTextEditorDecorationType({});
-  }
-  editor.setDecorations(currentDecorationType, decorations);
-}
-
 export function disposeDecorations() {
   if (currentDecorationType) {
     currentDecorationType.dispose();
