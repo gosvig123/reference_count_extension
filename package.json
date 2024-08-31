@@ -23,12 +23,12 @@
   "contributes": {
     "commands": [
       {
-        "command": "css-class-counter.countClasses",
-        "title": "CSS Class Counter: Count Classes"
+        "command": "extension.openTerminalAndRunFzf",
+        "title": "Open Terminal and Run FZF"
       },
       {
-        "command": "extension.countDefinitionsAndUsages",
-        "title": "Count Definitions and Usages"
+        "command": "extension.showFunctionList",
+        "title": "Show Function List"
       }
     ]
   },

@@ -1,139 +1,109 @@
 import * as vscode from "vscode";
-import { acceptedLanguages } from "./constants";
 
-import { disposeDecorations, hasValidFiles } from "./utils";
-export interface OutlineItem {
-  name: string;
-  kind: vscode.SymbolKind;
-  range: vscode.Range;
-  children: OutlineItem[];
-}
+let functionListPanel: vscode.WebviewPanel | undefined;
 
-let outlineDecorationType: vscode.TextEditorDecorationType;
-
-async function showOutline() {
-  const validFiles = hasValidFiles();
-  if (!validFiles) return;
-
-  const { document, editor } = validFiles;
-
-  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-    "vscode.executeDocumentSymbolProvider",
-    document.uri
-  );
-
-  const outlineItems: OutlineItem[] = [];
-
-  if (symbols) {
-    for (const symbol of symbols) {
-      outlineItems.push(createOutlineItem(symbol));
-    }
-  }
-
-  // Limit the number of decorations to the visible range
-  const visibleRange = editor.visibleRanges[0];
-  const visibleLines = visibleRange.end.line - visibleRange.start.line + 1;
-  const limitedItems = outlineItems.slice(0, visibleLines);
-
-  const decorations = createOutlineDecorations(limitedItems, editor);
-  editor.setDecorations(outlineDecorationType, decorations);
-
-  console.log(`Applied ${decorations.length} outline decorations`);
-}
-
-function createOutlineItem(symbol: vscode.DocumentSymbol): OutlineItem {
-  return {
-    name: symbol.name,
-    kind: symbol.kind,
-    range: symbol.range,
-    children: symbol.children ? symbol.children.map(createOutlineItem) : [],
-  };
-}
-
-function createOutlineDecorations(
-  items: OutlineItem[],
-  editor: vscode.TextEditor
-): vscode.DecorationOptions[] {
-  const decorations: vscode.DecorationOptions[] = [];
-  const visibleRange = editor.visibleRanges[0];
-
-  items.forEach((item, index) => {
-    const lineIndex = visibleRange.start.line + index;
-
-    if (lineIndex <= visibleRange.end.line) {
-      const decoration = {
-        range: new vscode.Range(lineIndex, 0, lineIndex, 0),
-        renderOptions: {
-          after: {
-            contentText: item.name,
-            color: "rgba(100, 149, 237, 0.7)",
-            fontStyle: "italic",
-            backgroundColor: "transparent",
-            textAlign: "right",
-          },
-        },
-      };
-      decorations.push(decoration);
-    }
-  });
-
-  return decorations;
-}
 export function activate(context: vscode.ExtensionContext) {
-  console.log("Extension activated");
+  console.log("Congratulations, your extension is now active!");
 
-  outlineDecorationType = vscode.window.createTextEditorDecorationType({
-    isWholeLine: true,
-    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+  let disposable = vscode.commands.registerCommand("extension.showFunctionList", () => {
+    if (functionListPanel) {
+      functionListPanel.reveal(vscode.ViewColumn.Beside);
+    } else {
+      functionListPanel = vscode.window.createWebviewPanel(
+        "functionList",
+        "Function List",
+        vscode.ViewColumn.Beside,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+        }
+      );
+
+      updateFunctionList();
+
+      functionListPanel.onDidDispose(
+        () => {
+          functionListPanel = undefined;
+        },
+        null,
+        context.subscriptions
+      );
+    }
   });
-
-  context.subscriptions.push(outlineDecorationType);
-
-  const disposable = vscode.commands.registerCommand(
-    "extension.showOutline",
-    debounce(showOutline, 500)
-  );
 
   context.subscriptions.push(disposable);
 
-  context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(onActiveEditorChanged),
-    vscode.workspace.onDidChangeTextDocument(onDocumentChanged),
-    vscode.window.onDidChangeTextEditorVisibleRanges((event) => {
-      if (event.textEditor === vscode.window.activeTextEditor) {
-        debounce(showOutline, 100)();
-      }
-    })
+  // Update the function list when the active editor changes
+  vscode.window.onDidChangeActiveTextEditor(updateFunctionList);
+
+  // Update the function list when the document is edited
+  vscode.workspace.onDidChangeTextDocument((event) => {
+    if (event.document === vscode.window.activeTextEditor?.document) {
+      updateFunctionList();
+    }
+  });
+}
+
+async function updateFunctionList() {
+  if (!functionListPanel) return;
+
+  const activeEditor = vscode.window.activeTextEditor;
+  if (!activeEditor) {
+    functionListPanel.webview.html = "No active editor";
+    return;
+  }
+
+  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+    "vscode.executeDocumentSymbolProvider",
+    activeEditor.document.uri
   );
 
-  // Initial call for the current active editor
-  onActiveEditorChanged(vscode.window.activeTextEditor);
-}
-function onActiveEditorChanged(editor: vscode.TextEditor | undefined) {
-  if (editor && acceptedLanguages.includes(editor.document.languageId)) {
-    debounce(showOutline, 500)();
+  if (!symbols) {
+    functionListPanel.webview.html = "No symbols found";
+    return;
   }
+
+  const functions: { name: string; line: number }[] = symbols.map((symbol) => ({
+    name: symbol.name,
+    line: symbol.range.start.line + 1,
+  }));
+
+  functionListPanel.webview.html = getWebviewContent(functions);
 }
 
-function onDocumentChanged(event: vscode.TextDocumentChangeEvent) {
-  const activeEditor = vscode.window.activeTextEditor;
-  if (
-    activeEditor &&
-    event.document === activeEditor.document &&
-    acceptedLanguages.includes(event.document.languageId)
-  ) {
-    debounce(showOutline, 500)();
-  }
+function getWebviewContent(functions: { name: string; line: number }[]): string {
+  return `<!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Function List</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 10px; }
+      .function-item { cursor: pointer; padding: 5px; }
+      .function-item:hover { background-color: #e0e0e0; }
+    </style>
+  </head>
+  <body class="vscode-body apc-custom-webview">
+    <h2>Functions in current file:</h2>
+    <div id="function-list">
+      ${functions
+        .map(
+          (f) => `<div class="function-item" data-line="${f.line}">${f.name} (Line ${f.line})</div>`
+        )
+        .join("")}
+    </div>
+    <script>
+      const vscode = acquireVsCodeApi();
+      document.getElementById('function-list').addEventListener('click', (event) => {
+        const line = event.target.getAttribute('data-line');
+        if (line) {
+          vscode.postMessage({ command: 'jumpToLine', line: parseInt(line) });
+        }
+      });
+    </script>
+  </body>
+  </html>`;
 }
 
-function debounce(func: (...args: any[]) => void, wait: number) {
-  let timeout: NodeJS.Timeout | null = null;
-  return function executedFunction(...args: any[]) {
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-}
-
-export function deactivate() {
-  disposeDecorations();
-}
+export function deactivate() {}
