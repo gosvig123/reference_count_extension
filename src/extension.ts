@@ -1,103 +1,158 @@
 import * as vscode from "vscode";
-import {  acceptedLanguages } from "./constants";
-import { hasValidFiles, createDecorationOptions, applyDecorations, DecorationData, disposeDecorations } from "./utils";
-import { getFunctionDefinitions } from "./regEx";
+import { getWebviewContent } from "./webview";
+let functionListPanel: vscode.WebviewPanel | undefined;
+let decorationType: vscode.TextEditorDecorationType;
 
-async function countDefinitionsAndUsages() {
-  const validFiles = hasValidFiles();
-  if (!validFiles) {
+export function activate(context: vscode.ExtensionContext) {
+  console.log("Activating extension");
+  // Initialize decorationType
+  decorationType = vscode.window.createTextEditorDecorationType({
+    after: {
+      margin: "0 0 0 0.5em",
+      textDecoration: "none",
+    },
+  });
+
+  let disposable = vscode.commands.registerCommand("extension.showFunctionList", () => {
+    if (functionListPanel) {
+      functionListPanel.reveal(vscode.ViewColumn.Active);
+    } else {
+      functionListPanel = vscode.window.createWebviewPanel(
+        "functionList",
+        "Function List",
+        vscode.ViewColumn.Beside,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+        }
+      );
+      updateFunctionList();
+      functionListPanel.onDidDispose(
+        () => {
+          functionListPanel = undefined;
+        },
+        null,
+        context.subscriptions
+      );
+    }
+  });
+  context.subscriptions.push(disposable);
+  // Update decorations for the current active editor
+  if (vscode.window.activeTextEditor) {
+    updateDecorations(vscode.window.activeTextEditor);
+  }
+
+  // Update when the active editor changes
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      console.log("Active editor changed");
+      if (editor) {
+        updateDecorations(editor);
+      }
+    })
+  );
+
+  // Update when the document is edited
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      console.log("Document changed");
+      if (event.document === vscode.window.activeTextEditor?.document) {
+        updateDecorations(vscode.window.activeTextEditor);
+      }
+    })
+  );
+}
+
+async function updateFunctionList() {
+  if (!functionListPanel) return;
+  const activeEditor = vscode.window.activeTextEditor;
+  if (!activeEditor) {
+    functionListPanel.webview.html = "No active editor";
     return;
   }
 
-  const { document, editor } = validFiles;
+  const symbols: vscode.DocumentSymbol[] | undefined = await vscode.commands.executeCommand<
+    vscode.DocumentSymbol[]
+  >("vscode.executeDocumentSymbolProvider", activeEditor.document.uri);
 
-  const text = document.getText();
-  const languageId = editor.document.languageId;
-  const funcDefs = getFunctionDefinitions(languageId, text);
+  if (!symbols) {
+    functionListPanel.webview.html = "No symbols found";
+    return;
+  }
 
-  const definitions = new Map<string, string[]>();
-  const usages = new Map<string, number>();
+  const functions: { name: string; line: number }[] = [];
 
-  funcDefs.forEach(funcName => {
-    definitions.set(funcName, [document.uri.fsPath]);
-    usages.set(funcName, 0);
-  });
+  for (const symbol of symbols) {
+    functions.push({
+      name: symbol.name,
+      line: symbol.range.start.line + 1,
+    });
+  }
 
-  const decorationData = createDecorationData(document, languageId, definitions, usages);
-  const decorations = decorationData.map(createDecorationOptions);
+  functionListPanel.webview.html = getWebviewContent(functions);
 
-  applyDecorations(editor, decorations);
+  if (symbols) {
+    await updateDecorations(activeEditor);
+  }
 }
 
+//TODO split into decoration and ref count logic
+async function updateDecorations(editor: vscode.TextEditor) {
+  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+    "vscode.executeDocumentSymbolProvider",
+    editor.document.uri
+  );
 
-function createDecorationData(
-  document: vscode.TextDocument,
-  languageId: string,
-  functionDefinitions: Map<string, string[]>,
-  functionUsages: Map<string, number>
-): DecorationData[] {
-  const decorationData: DecorationData[] = [];
-  const text = document.getText();
-  const funcDefs = getFunctionDefinitions(languageId, text);
 
-  for (const funcName of funcDefs) {
-    const regex = new RegExp(`\\b${funcName}\\b`, 'g');
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      const startPos = document.positionAt(match.index);
-      const endPos = document.positionAt(match.index + funcName.length);
-      const range = new vscode.Range(startPos, endPos);
+  if (!symbols) {
+    console.log("No symbols found");
+    return;
+  }
 
-      const definitionCount = functionDefinitions.get(funcName)?.length || 0;
-      const usageCount = functionUsages.get(funcName) || 0;
+  const decorations: vscode.DecorationOptions[] = [];
 
-      const text = definitionCount > 1 ? " Duplicate definition " : usageCount > 0 ? `  (${usageCount})` : "No usages";
-      const color = definitionCount > 1 ? "rgba(255, 165, 0, 0.9)" : "rgba(65, 105, 225, 0.9)";
+  for (const symbol of symbols) {
+    const symbolReferences = await vscode.commands.executeCommand<vscode.Location[]>(
+      "vscode.executeReferenceProvider",
+      editor.document.uri,
+      symbol.range.start
+    );
 
-      decorationData.push({ range, text, color });
+    let exports = 0;
+    let references = 0;
+
+    if (symbolReferences) {
+      for (const ref of symbolReferences) {
+        const refLine = editor.document.lineAt(ref.range.start.line).text.trim();
+
+        if (refLine.includes("export") || refLine.includes(`export ${symbol.name}`)) {
+          exports++;
+        } else {
+          references++;
+        }
+      }
     }
+    const finalRefCount = references > 0 ? references - 1 : references;
+    const displayText = finalRefCount > 0 ? `(${finalRefCount})` : "No references";
+    const textColor = finalRefCount > 0 ? "gray" : "red";
+    const decoration: vscode.DecorationOptions = {
+      range: new vscode.Range(symbol.range.start, symbol.range.start),
+      renderOptions: {
+        after: {
+          contentText: displayText,
+          color: textColor,
+        },
+      },
+    };
+
+    decorations.push(decoration);
   }
 
-  return decorationData;
-}
-
-export function activate(context: vscode.ExtensionContext) {
-  console.log("Extension activated");
-
-  let disposable = vscode.commands.registerCommand(
-    "extension.countDefinitionsAndUsages",
-    countDefinitionsAndUsages
-  );
-
-  context.subscriptions.push(disposable);
-
-  context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (editor && acceptedLanguages.includes(editor.document.languageId)) {
-        countDefinitionsAndUsages();
-      }
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      if (
-        event.document === vscode.window.activeTextEditor?.document &&
-        acceptedLanguages.includes(event.document.languageId)
-      ) {
-        countDefinitionsAndUsages();
-      }
-    })
-  );
-
-  if (
-    vscode.window.activeTextEditor &&
-    acceptedLanguages.includes(vscode.window.activeTextEditor.document.languageId)
-  ) {
-    countDefinitionsAndUsages();
-  }
+  editor.setDecorations(decorationType, decorations);
 }
 
 export function deactivate() {
-  disposeDecorations();
+  if (decorationType) {
+    decorationType.dispose();
+  }
 }

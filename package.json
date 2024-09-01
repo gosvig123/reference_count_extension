@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.0.10",
+  "version": "0.0.14",
   "engines": {
     "vscode": "^1.91.0"
   },
@@ -23,12 +23,12 @@
   "contributes": {
     "commands": [
       {
-        "command": "css-class-counter.countClasses",
-        "title": "CSS Class Counter: Count Classes"
+        "command": "extension.displayReferenceCount",
+        "title": "Display Reference Count"
       },
       {
-        "command": "extension.countDefinitionsAndUsages",
-        "title": "Count Definitions and Usages"
+        "command": "extension.showFunctionList",
+        "title": "Show Function List"
       }
     ]
   },

@@ -8,7 +8,7 @@
 		"sourceMap": true,
     "rootDir": "src",
     "strict": false, /* enable all strict type-checking options */
-    "types": ["jest", "node", "@testing-library/jest-dom", "jest-environment-jsdom"],
+    "types": ["node"],
     "jsx": "react",
     "esModuleInterop": true
 	},
