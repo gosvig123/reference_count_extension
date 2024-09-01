@@ -118,23 +118,22 @@ async function updateDecorations(editor: vscode.TextEditor) {
       symbol.range.start
     );
 
-    let exports = 0;
-    let references = 0;
+    let referenceCount = 0;
 
     if (symbolReferences) {
       for (const ref of symbolReferences) {
         const refLine = editor.document.lineAt(ref.range.start.line).text.trim();
 
         if (refLine.includes("export") || refLine.includes(`export ${symbol.name}`)) {
-          exports++;
+          continue;
         } else {
-          references++;
+          referenceCount++;
         }
       }
     }
-    const finalRefCount = references > 0 ? references - 1 : references;
-    const displayText = finalRefCount > 0 ? `(${finalRefCount})` : "No references";
-    const textColor = finalRefCount > 0 ? "gray" : "red";
+;
+    const displayText = referenceCount > 0 ? `(${referenceCount})` : "No references";
+    const textColor = referenceCount > 0 ? "gray" : "red";
     const decoration: vscode.DecorationOptions = {
       range: new vscode.Range(symbol.range.start, symbol.range.start),
       renderOptions: {
