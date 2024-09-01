@@ -5,7 +5,6 @@ let decorationType: vscode.TextEditorDecorationType;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("Activating extension");
-
   // Initialize decorationType
   decorationType = vscode.window.createTextEditorDecorationType({
     after: {
@@ -104,6 +103,7 @@ async function updateDecorations(editor: vscode.TextEditor) {
     editor.document.uri
   );
 
+
   if (!symbols) {
     console.log("No symbols found");
     return;
@@ -124,6 +124,7 @@ async function updateDecorations(editor: vscode.TextEditor) {
     if (symbolReferences) {
       for (const ref of symbolReferences) {
         const refLine = editor.document.lineAt(ref.range.start.line).text.trim();
+
         if (refLine.includes("export") || refLine.includes(`export ${symbol.name}`)) {
           exports++;
         } else {
@@ -131,13 +132,15 @@ async function updateDecorations(editor: vscode.TextEditor) {
         }
       }
     }
-
+    const finalRefCount = references > 0 ? references - 1 : references;
+    const displayText = finalRefCount > 0 ? `(${finalRefCount})` : "No references";
+    const textColor = finalRefCount > 0 ? "gray" : "red";
     const decoration: vscode.DecorationOptions = {
       range: new vscode.Range(symbol.range.start, symbol.range.start),
       renderOptions: {
         after: {
-          contentText: `  (${references - 1})`,
-          color: "gray",
+          contentText: displayText,
+          color: textColor,
         },
       },
     };
