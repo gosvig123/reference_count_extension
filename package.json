@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "engines": {
     "vscode": "^1.91.0"
   },
@@ -23,8 +23,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "extension.openTerminalAndRunFzf",
-        "title": "Open Terminal and Run FZF"
+        "command": "extension.displayReferenceCount",
+        "title": "Display Reference Count"
       },
       {
         "command": "extension.showFunctionList",

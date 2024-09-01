@@ -1,13 +1,22 @@
 import * as vscode from "vscode";
-
+import { getWebviewContent } from "./webview";
 let functionListPanel: vscode.WebviewPanel | undefined;
+let decorationType: vscode.TextEditorDecorationType;
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log("Congratulations, your extension is now active!");
+  console.log("Activating extension");
+
+  // Initialize decorationType
+  decorationType = vscode.window.createTextEditorDecorationType({
+    after: {
+      margin: "0 0 0 0.5em",
+      textDecoration: "none",
+    },
+  });
 
   let disposable = vscode.commands.registerCommand("extension.showFunctionList", () => {
     if (functionListPanel) {
-      functionListPanel.reveal(vscode.ViewColumn.Beside);
+      functionListPanel.reveal(vscode.ViewColumn.Active);
     } else {
       functionListPanel = vscode.window.createWebviewPanel(
         "functionList",
@@ -18,9 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
           retainContextWhenHidden: true,
         }
       );
-
       updateFunctionList();
-
       functionListPanel.onDidDispose(
         () => {
           functionListPanel = undefined;
@@ -30,80 +37,121 @@ export function activate(context: vscode.ExtensionContext) {
       );
     }
   });
-
   context.subscriptions.push(disposable);
+  // Update decorations for the current active editor
+  if (vscode.window.activeTextEditor) {
+    updateDecorations(vscode.window.activeTextEditor);
+  }
 
-  // Update the function list when the active editor changes
-  vscode.window.onDidChangeActiveTextEditor(updateFunctionList);
+  // Update when the active editor changes
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      console.log("Active editor changed");
+      if (editor) {
+        updateDecorations(editor);
+      }
+    })
+  );
 
-  // Update the function list when the document is edited
-  vscode.workspace.onDidChangeTextDocument((event) => {
-    if (event.document === vscode.window.activeTextEditor?.document) {
-      updateFunctionList();
-    }
-  });
+  // Update when the document is edited
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      console.log("Document changed");
+      if (event.document === vscode.window.activeTextEditor?.document) {
+        updateDecorations(vscode.window.activeTextEditor);
+      }
+    })
+  );
 }
 
 async function updateFunctionList() {
   if (!functionListPanel) return;
-
   const activeEditor = vscode.window.activeTextEditor;
   if (!activeEditor) {
     functionListPanel.webview.html = "No active editor";
     return;
   }
 
-  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-    "vscode.executeDocumentSymbolProvider",
-    activeEditor.document.uri
-  );
+  const symbols: vscode.DocumentSymbol[] | undefined = await vscode.commands.executeCommand<
+    vscode.DocumentSymbol[]
+  >("vscode.executeDocumentSymbolProvider", activeEditor.document.uri);
 
   if (!symbols) {
     functionListPanel.webview.html = "No symbols found";
     return;
   }
 
-  const functions: { name: string; line: number }[] = symbols.map((symbol) => ({
-    name: symbol.name,
-    line: symbol.range.start.line + 1,
-  }));
+  const functions: { name: string; line: number }[] = [];
+
+  for (const symbol of symbols) {
+    functions.push({
+      name: symbol.name,
+      line: symbol.range.start.line + 1,
+    });
+  }
 
   functionListPanel.webview.html = getWebviewContent(functions);
+
+  if (symbols) {
+    await updateDecorations(activeEditor);
+  }
 }
 
-function getWebviewContent(functions: { name: string; line: number }[]): string {
-  return `<!DOCTYPE html>
-  <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Function List</title>
-    <style>
-      body { font-family: Arial, sans-serif; padding: 10px; }
-      .function-item { cursor: pointer; padding: 5px; }
-      .function-item:hover { background-color: #e0e0e0; }
-    </style>
-  </head>
-  <body class="vscode-body apc-custom-webview">
-    <h2>Functions in current file:</h2>
-    <div id="function-list">
-      ${functions
-        .map(
-          (f) => `<div class="function-item" data-line="${f.line}">${f.name} (Line ${f.line})</div>`
-        )
-        .join("")}
-    </div>
-    <script>
-      const vscode = acquireVsCodeApi();
-      document.getElementById('function-list').addEventListener('click', (event) => {
-        const line = event.target.getAttribute('data-line');
-        if (line) {
-          vscode.postMessage({ command: 'jumpToLine', line: parseInt(line) });
+//TODO split into decoration and ref count logic
+async function updateDecorations(editor: vscode.TextEditor) {
+  console.log("Updating decorations");
+  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+    "vscode.executeDocumentSymbolProvider",
+    editor.document.uri
+  );
+
+  if (!symbols) {
+    console.log("No symbols found");
+    return;
+  }
+
+  const decorations: vscode.DecorationOptions[] = [];
+
+  for (const symbol of symbols) {
+    const symbolReferences = await vscode.commands.executeCommand<vscode.Location[]>(
+      "vscode.executeReferenceProvider",
+      editor.document.uri,
+      symbol.range.start
+    );
+
+    let exports = 0;
+    let references = 0;
+
+    if (symbolReferences) {
+      for (const ref of symbolReferences) {
+        const refLine = editor.document.lineAt(ref.range.start.line).text.trim();
+        if (refLine.includes("export") || refLine.includes(`export ${symbol.name}`)) {
+          exports++;
+        } else {
+          references++;
         }
-      });
-    </script>
-  </body>
-  </html>`;
+      }
+    }
+
+    const decoration: vscode.DecorationOptions = {
+      range: new vscode.Range(symbol.range.start, symbol.range.start),
+      renderOptions: {
+        after: {
+          contentText: `  (${references - 1})`,
+          color: "gray",
+        },
+      },
+    };
+
+    decorations.push(decoration);
+  }
+
+  console.log(`Applying ${decorations.length} decorations`);
+  editor.setDecorations(decorationType, decorations);
 }
 
-export function deactivate() {}
+export function deactivate() {
+  if (decorationType) {
+    decorationType.dispose();
+  }
+}
