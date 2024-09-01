@@ -99,7 +99,6 @@ async function updateFunctionList() {
 
 //TODO split into decoration and ref count logic
 async function updateDecorations(editor: vscode.TextEditor) {
-  console.log("Updating decorations");
   const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
     "vscode.executeDocumentSymbolProvider",
     editor.document.uri
@@ -146,7 +145,6 @@ async function updateDecorations(editor: vscode.TextEditor) {
     decorations.push(decoration);
   }
 
-  console.log(`Applying ${decorations.length} decorations`);
   editor.setDecorations(decorationType, decorations);
 }
 
