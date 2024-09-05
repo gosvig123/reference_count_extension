@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import decorateFile from './utils/decoration';
+import decorateFile from './decrateFile';
 import { getWebviewContent } from './webview';
 
 let functionListPanel: vscode.WebviewPanel | undefined;
@@ -105,10 +105,11 @@ async function updateFunctionList() {
 
 //TODO split into decoration and ref count logic
 async function updateDecorations(editor: vscode.TextEditor) {
-  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-    'vscode.executeDocumentSymbolProvider',
-    editor.document.uri
-  );
+  const symbols: vscode.DocumentSymbol[] | undefined =
+    await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+      'vscode.executeDocumentSymbolProvider',
+      editor.document.uri
+    );
 
   if (!symbols) {
     console.log('No symbols found');
@@ -118,36 +119,23 @@ async function updateDecorations(editor: vscode.TextEditor) {
   const decorations: vscode.DecorationOptions[] = [];
 
   for (const symbol of symbols) {
-    const symbolReferences = await vscode.commands.executeCommand<
-      vscode.Location[]
-    >(
-      'vscode.executeReferenceProvider',
-      editor.document.uri,
-      symbol.range.start
-    );
+    const symbolReferences: vscode.Location[] | undefined =
+      await vscode.commands.executeCommand<vscode.Location[]>(
+        'vscode.executeReferenceProvider',
+        editor.document.uri,
+        symbol.range.start,
+        { includeDeclaration: false }
+      );
 
-    let references = 0;
+    let referenceCount = 0;
 
     if (symbolReferences) {
-      for (const ref of symbolReferences) {
-        const refLine = editor.document
-          .lineAt(ref.range.start.line)
-          .text.trim();
-
-        if (
-          refLine.includes('export') ||
-          refLine.includes(`export ${symbol.name}`)
-        ) {
-          continue;
-        } else {
-          references++;
-        }
-      }
+      referenceCount = symbolReferences.length;
     }
 
-    const decoration = decorateFile(references, symbol.range.start);
+    const decoratedFile = decorateFile(referenceCount, symbol.range.start);
 
-    decorations.push(decoration);
+    decorations.push(decoratedFile);
   }
 
   editor.setDecorations(decorationType, decorations);
