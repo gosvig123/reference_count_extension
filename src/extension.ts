@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
-import decorateFile from './decrateFile';
 import { getWebviewContent } from './webview';
+import decorateFile from './utils/decorateFile';
 
 let functionListPanel: vscode.WebviewPanel | undefined;
 let decorationType: vscode.TextEditorDecorationType;
-
 export function activate(context: vscode.ExtensionContext) {
   console.log('Activating extension');
   // Initialize decorationType
