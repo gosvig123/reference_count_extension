@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { getWebviewContent } from './webview';
 import decorateFile from './utils/decorateFile';
+import { getWebviewContent } from './webview';
 
 let functionListPanel: vscode.WebviewPanel | undefined;
 let decorationType: vscode.TextEditorDecorationType;
