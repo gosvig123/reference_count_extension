@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "engines": {
     "vscode": "^1.91.0"
   },
@@ -20,18 +20,6 @@
     "onLanguage:python"
   ],
   "main": "./dist/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "extension.displayReferenceCount",
-        "title": "Display Reference Count"
-      },
-      {
-        "command": "extension.showFunctionList",
-        "title": "Show Function List"
-      }
-    ]
-  },
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "webpack",

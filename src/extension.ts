@@ -1,12 +1,11 @@
 import * as vscode from 'vscode';
-import decorateFile from './decrateFile';
-import { getWebviewContent } from './webview';
+import { decorateFile } from './decorateFile';
 
-let functionListPanel: vscode.WebviewPanel | undefined;
 let decorationType: vscode.TextEditorDecorationType;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Activating extension');
+
   // Initialize decorationType
   decorationType = vscode.window.createTextEditorDecorationType({
     after: {
@@ -14,34 +13,8 @@ export function activate(context: vscode.ExtensionContext) {
       textDecoration: 'none',
     },
   });
-
-  let disposable = vscode.commands.registerCommand(
-    'extension.showFunctionList',
-    () => {
-      if (functionListPanel) {
-        functionListPanel.reveal(vscode.ViewColumn.Active);
-      } else {
-        functionListPanel = vscode.window.createWebviewPanel(
-          'functionList',
-          'Function List',
-          vscode.ViewColumn.Beside,
-          {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-          }
-        );
-        updateFunctionList();
-        functionListPanel.onDidDispose(
-          () => {
-            functionListPanel = undefined;
-          },
-          null,
-          context.subscriptions
-        );
-      }
-    }
-  );
-  context.subscriptions.push(disposable);
+  // Update decorations for the current active editor
+  updateFunctionList();
   // Update decorations for the current active editor
   if (vscode.window.activeTextEditor) {
     updateDecorations(vscode.window.activeTextEditor);
@@ -54,7 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (editor) {
         updateDecorations(editor);
       }
-    })
+    }),
   );
 
   // Update when the document is edited
@@ -64,28 +37,19 @@ export function activate(context: vscode.ExtensionContext) {
       if (event.document === vscode.window.activeTextEditor?.document) {
         updateDecorations(vscode.window.activeTextEditor);
       }
-    })
+    }),
   );
 }
 
 async function updateFunctionList() {
-  if (!functionListPanel) return;
   const activeEditor = vscode.window.activeTextEditor;
   if (!activeEditor) {
-    functionListPanel.webview.html = 'No active editor';
     return;
   }
 
-  const symbols: vscode.DocumentSymbol[] | undefined =
-    await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-      'vscode.executeDocumentSymbolProvider',
-      activeEditor.document.uri
-    );
-
-  if (!symbols) {
-    functionListPanel.webview.html = 'No symbols found';
-    return;
-  }
+  const symbols: vscode.DocumentSymbol[] | undefined = await vscode.commands.executeCommand<
+    vscode.DocumentSymbol[]
+  >('vscode.executeDocumentSymbolProvider', activeEditor.document.uri);
 
   const functions: { name: string; line: number }[] = [];
 
@@ -96,8 +60,6 @@ async function updateFunctionList() {
     });
   }
 
-  functionListPanel.webview.html = getWebviewContent(functions);
-
   if (symbols) {
     await updateDecorations(activeEditor);
   }
@@ -105,11 +67,9 @@ async function updateFunctionList() {
 
 //TODO split into decoration and ref count logic
 async function updateDecorations(editor: vscode.TextEditor) {
-  const symbols: vscode.DocumentSymbol[] | undefined =
-    await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-      'vscode.executeDocumentSymbolProvider',
-      editor.document.uri
-    );
+  const symbols: vscode.DocumentSymbol[] | undefined = await vscode.commands.executeCommand<
+    vscode.DocumentSymbol[]
+  >('vscode.executeDocumentSymbolProvider', editor.document.uri);
 
   if (!symbols) {
     console.log('No symbols found');
@@ -119,13 +79,11 @@ async function updateDecorations(editor: vscode.TextEditor) {
   const decorations: vscode.DecorationOptions[] = [];
 
   for (const symbol of symbols) {
-    const symbolReferences: vscode.Location[] | undefined =
-      await vscode.commands.executeCommand<vscode.Location[]>(
-        'vscode.executeReferenceProvider',
-        editor.document.uri,
-        symbol.range.start,
-        { includeDeclaration: false }
-      );
+    const symbolReferences: vscode.Location[] | undefined = await vscode.commands.executeCommand<
+      vscode.Location[]
+    >('vscode.executeReferenceProvider', editor.document.uri, symbol.range.start, {
+      includeDeclaration: false,
+    });
 
     let referenceCount = 0;
 
