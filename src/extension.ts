@@ -14,8 +14,6 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   });
   // Update decorations for the current active editor
-  await updateFunctionList();
-  // Update decorations for the current active editor
   if (vscode.window.activeTextEditor) {
     await updateDecorations(vscode.window.activeTextEditor);
   }
@@ -41,62 +39,42 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 }
 
-async function updateFunctionList() {
-  const activeEditor = vscode.window.activeTextEditor;
-  if (!activeEditor) {
+//TODO split into decoration and ref count logic
+async function updateDecorations(editor: vscode.TextEditor) {
+  const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
+  const fileExtension = editor.document.uri.path.split('.').pop() || '';
+  const isAcceptedFile = acceptedExtensions.has(fileExtension);
+
+  if (!isAcceptedFile) {
+    console.log('File type not supported');
     return;
   }
 
-  const symbols: vscode.DocumentSymbol[] | undefined = await vscode.commands.executeCommand<
-    vscode.DocumentSymbol[]
-  >('vscode.executeDocumentSymbolProvider', activeEditor.document.uri);
+  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+    'vscode.executeDocumentSymbolProvider',
+    editor.document.uri
+  );
 
-  const functions: { name: string; line: number }[] = [];
-
-  for (const symbol of symbols) {
-    functions.push({
-      name: symbol.name,
-      line: symbol.range.start.line + 1,
-    });
-  }
-
-  if (symbols) {
-    await updateDecorations(activeEditor);
-  }
-}
-
-//TODO split into decoration and ref count logic
-async function updateDecorations(editor: vscode.TextEditor) {
-  const symbols: vscode.DocumentSymbol[] | undefined = await vscode.commands.executeCommand<
-    vscode.DocumentSymbol[]
-  >('vscode.executeDocumentSymbolProvider', editor.document.uri);
-
-  if (!symbols) {
+  if (!symbols || symbols.length === 0) {
     console.log('No symbols found');
     return;
   }
 
-  const decorations: vscode.DecorationOptions[] = [];
-
-  for (const symbol of symbols) {
+  const decorationPromises = symbols.map(async (symbol) => {
     const symbolReferences: vscode.Location[] | undefined = await vscode.commands.executeCommand<
       vscode.Location[]
     >('vscode.executeReferenceProvider', editor.document.uri, symbol.range.start, {
       includeDeclaration: false,
     });
+    console.log('symbolReferences', symbolReferences);
 
-    let referenceCount = 0;
+    const referenceCount = symbolReferences ? symbolReferences.length : 0;
+    return decorateFile(referenceCount, symbol.range.start);
+  });
 
-    if (symbolReferences) {
-      referenceCount = symbolReferences.length;
-    }
+  const ondecorations = await Promise.all(decorationPromises);
 
-    const decoratedFile = decorateFile(referenceCount, symbol.range.start);
-
-    decorations.push(decoratedFile);
-  }
-
-  editor.setDecorations(decorationType, decorations);
+  editor.setDecorations(decorationType, ondecorations);
 }
 
 export function deactivate() {
