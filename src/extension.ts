@@ -3,7 +3,7 @@ import { decorateFile } from './decorateFile';
 
 let decorationType: vscode.TextEditorDecorationType;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   console.log('Activating extension');
 
   // Initialize decorationType
@@ -14,28 +14,28 @@ export function activate(context: vscode.ExtensionContext) {
     },
   });
   // Update decorations for the current active editor
-  updateFunctionList();
+  await updateFunctionList();
   // Update decorations for the current active editor
   if (vscode.window.activeTextEditor) {
-    updateDecorations(vscode.window.activeTextEditor);
+    await updateDecorations(vscode.window.activeTextEditor);
   }
 
   // Update when the active editor changes
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
+    vscode.window.onDidChangeActiveTextEditor(async (editor) => {
       console.log('Active editor changed');
       if (editor) {
-        updateDecorations(editor);
+        await updateDecorations(editor);
       }
     }),
   );
 
   // Update when the document is edited
   context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument((event) => {
+    vscode.workspace.onDidChangeTextDocument(async (event) => {
       console.log('Document changed');
       if (event.document === vscode.window.activeTextEditor?.document) {
-        updateDecorations(vscode.window.activeTextEditor);
+        await updateDecorations(vscode.window.activeTextEditor);
       }
     }),
   );
