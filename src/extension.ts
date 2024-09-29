@@ -38,6 +38,11 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
   );
+
+  // Register custom command for Python symbol references
+  context.subscriptions.push(
+    vscode.commands.registerCommand('extension.getPythonSymbolReferences', handleReferencesForPython)
+  );
 }
 
 //TODO split into decoration and ref count logic
@@ -64,11 +69,11 @@ async function updateDecorations(editor: vscode.TextEditor) {
   }
 
   const decorationPromises = symbols.map(async (symbol) => {
-    let symbolReferences: vscode.Location[] | undefined | vscode.SymbolInformation[];
+    let symbolReferences: vscode.Location[];
 
     if (isPython) {
-      // Use Python-specific reference handler
-      symbolReferences = await handleReferencesForPython(symbol);
+      // Use custom command for Python references
+      symbolReferences = await vscode.commands.executeCommand('extension.getPythonSymbolReferences', symbol);
     } else {
       // Use the standard reference provider for other languages
       symbolReferences = await vscode.commands.executeCommand<vscode.Location[]>(
