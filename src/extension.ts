@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { decorateFile } from './decorateFile';
+import { handleReferencesForPython } from './handleSymbolReferences';
 
 let decorationType: vscode.TextEditorDecorationType;
 
@@ -50,9 +51,11 @@ async function updateDecorations(editor: vscode.TextEditor) {
     return;
   }
 
+  const isPython = fileExtension === 'py';
+
   const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
     'vscode.executeDocumentSymbolProvider',
-    editor.document.uri
+    editor.document.uri,
   );
 
   if (!symbols || symbols.length === 0) {
@@ -61,12 +64,20 @@ async function updateDecorations(editor: vscode.TextEditor) {
   }
 
   const decorationPromises = symbols.map(async (symbol) => {
-    const symbolReferences: vscode.Location[] | undefined = await vscode.commands.executeCommand<
-      vscode.Location[]
-    >('vscode.executeReferenceProvider', editor.document.uri, symbol.range.start, {
-      includeDeclaration: false,
-    });
-    console.log('symbolReferences', symbolReferences);
+    let symbolReferences: vscode.Location[] | undefined | vscode.SymbolInformation[];
+
+    if (isPython) {
+      // Use Python-specific reference handler
+      symbolReferences = await handleReferencesForPython(symbol);
+    } else {
+      // Use the standard reference provider for other languages
+      symbolReferences = await vscode.commands.executeCommand<vscode.Location[]>(
+        'vscode.executeReferenceProvider',
+        editor.document.uri,
+        symbol.range.start,
+        { includeDeclaration: false },
+      );
+    }
 
     const referenceCount = symbolReferences ? symbolReferences.length : 0;
     return decorateFile(referenceCount, symbol.range.start);
