@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { decorateFile } from './decorateFile';
-import { handleReferencesForPython } from './handleSymbolReferences';
 
 let decorationType: vscode.TextEditorDecorationType;
 
@@ -39,10 +38,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Register custom command for Python symbol references
-  context.subscriptions.push(
-    vscode.commands.registerCommand('extension.getPythonSymbolReferences', handleReferencesForPython)
-  );
 }
 
 //TODO split into decoration and ref count logic
@@ -56,8 +51,6 @@ async function updateDecorations(editor: vscode.TextEditor) {
     return;
   }
 
-  const isPython = fileExtension === 'py';
-
   const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
     'vscode.executeDocumentSymbolProvider',
     editor.document.uri,
@@ -68,29 +61,24 @@ async function updateDecorations(editor: vscode.TextEditor) {
     return;
   }
 
-  const decorationPromises = symbols.map(async (symbol) => {
-    let symbolReferences: vscode.Location[];
+  const decorations = await Promise.all(
+    symbols.map(async (symbol) => {
+      let symbolReferences: vscode.Location[];
 
-    if (isPython) {
-      // Use custom command for Python references
-      symbolReferences = await vscode.commands.executeCommand('extension.getPythonSymbolReferences', symbol);
-    } else {
-      // Use the standard reference provider for other languages
       symbolReferences = await vscode.commands.executeCommand<vscode.Location[]>(
         'vscode.executeReferenceProvider',
         editor.document.uri,
-        symbol.range.start,
+        symbol.selectionRange.start,
         { includeDeclaration: false },
       );
-    }
+      // }
 
-    const referenceCount = symbolReferences ? symbolReferences.length : 0;
-    return decorateFile(referenceCount, symbol.range.start);
-  });
+      const referenceCount = symbolReferences ? symbolReferences.length : 0;
+      return decorateFile(referenceCount, symbol.range.start);
+    }),
+  );
 
-  const ondecorations = await Promise.all(decorationPromises);
-
-  editor.setDecorations(decorationType, ondecorations);
+  editor.setDecorations(decorationType, decorations);
 }
 
 export function deactivate() {
