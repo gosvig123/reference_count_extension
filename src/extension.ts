@@ -62,23 +62,50 @@ async function updateDecorations(editor: vscode.TextEditor) {
   }
 
   const decorations = await Promise.all(
-    symbols.map(async (symbol) => {
-      let symbolReferences: vscode.Location[];
+    symbols.flatMap(async (symbol) => {
+      const decorationsForSymbol: vscode.DecorationOptions[] = [];
 
-      symbolReferences = await vscode.commands.executeCommand<vscode.Location[]>(
+      // Get references for the top-level symbol
+      const symbolReferences = await vscode.commands.executeCommand<vscode.Location[]>(
         'vscode.executeReferenceProvider',
         editor.document.uri,
         symbol.selectionRange.start,
-        { includeDeclaration: false },
+        { includeDeclaration: false }
       );
-      // }
 
+      // Add decoration for the top-level symbol
       const referenceCount = symbolReferences ? symbolReferences.length : 0;
-      return decorateFile(referenceCount, symbol.range.start);
-    }),
+      decorationsForSymbol.push(decorateFile(referenceCount, symbol.range.start));
+
+      // If it's a class, process its methods
+      if (symbol.kind === vscode.SymbolKind.Class) {
+        const methods = symbol.children.filter(
+          child => child.kind === vscode.SymbolKind.Method
+        );
+
+        // Get references for each method
+        const methodDecorations = await Promise.all(
+          methods.map(async (method) => {
+            const methodReferences = await vscode.commands.executeCommand<vscode.Location[]>(
+              'vscode.executeReferenceProvider',
+              editor.document.uri,
+              method.selectionRange.start,
+              { includeDeclaration: false }
+            );
+
+            const methodReferenceCount = methodReferences ? methodReferences.length : 0;
+            return decorateFile(methodReferenceCount, method.range.start);
+          })
+        );
+
+        decorationsForSymbol.push(...methodDecorations);
+      }
+
+      return decorationsForSymbol;
+    })
   );
 
-  editor.setDecorations(decorationType, decorations);
+  editor.setDecorations(decorationType, decorations.flat());
 }
 
 export function deactivate() {
