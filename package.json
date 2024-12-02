@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.91.0"
@@ -55,5 +55,20 @@
     "wrap-ansi": "^7.0.0",
     "babel-plugin-macros": "^3.1.0",
     "bufferutil": "^4.0.1"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Reference Counter",
+      "properties": {
+        "referenceCounter.excludePatterns": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Patterns to exclude from reference counting. all file names that include the added string or folders that contain the added string will be excluded. Example: to exclude all files in the 'node_modules' folder, add 'node_modules' to the list."
+        }
+      }
+    }
   }
 }

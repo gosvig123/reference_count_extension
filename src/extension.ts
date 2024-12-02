@@ -42,6 +42,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
 //TODO split into decoration and ref count logic
 async function updateDecorations(editor: vscode.TextEditor) {
+  const config = vscode.workspace.getConfiguration('referenceCounter');
+  const excludePatterns = config.get<string[]>('excludePatterns') || [];
+
+  // Check if file matches any exclude pattern
+  const fileName = editor.document.uri.path;
+  const isExcluded = excludePatterns.some(pattern =>
+    new RegExp(pattern.replace(/\*/g, '.*')).test(fileName)
+  );
+
+  if (isExcluded) {
+    // since the file is excluded, we don't need to count references
+    return;
+  }
+
   const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
   const fileExtension = editor.document.uri.path.split('.').pop() || '';
   const isAcceptedFile = acceptedExtensions.has(fileExtension);
