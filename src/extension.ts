@@ -45,17 +45,6 @@ async function updateDecorations(editor: vscode.TextEditor) {
   const config = vscode.workspace.getConfiguration('referenceCounter');
   const excludePatterns = config.get<string[]>('excludePatterns') || [];
 
-  // Check if file matches any exclude pattern
-  const fileName = editor.document.uri.path;
-  const isExcluded = excludePatterns.some(pattern =>
-    new RegExp(pattern.replace(/\*/g, '.*')).test(fileName)
-  );
-
-  if (isExcluded) {
-    // since the file is excluded, we don't need to count references
-    return;
-  }
-
   const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
   const fileExtension = editor.document.uri.path.split('.').pop() || '';
   const isAcceptedFile = acceptedExtensions.has(fileExtension);
@@ -87,8 +76,16 @@ async function updateDecorations(editor: vscode.TextEditor) {
         { includeDeclaration: false }
       );
 
+      // Filter out excluded references
+      const filteredReferences = symbolReferences?.filter(reference => {
+        const refPath = reference.uri.path;
+        return !excludePatterns.some(pattern =>
+          new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
+        );
+      });
+
       // Add decoration for the top-level symbol
-      const referenceCount = symbolReferences ? symbolReferences.length : 0;
+      const referenceCount = filteredReferences ? filteredReferences.length : 0;
       decorationsForSymbol.push(decorateFile(referenceCount, symbol.range.start));
 
       // If it's a class, process its methods
@@ -107,7 +104,15 @@ async function updateDecorations(editor: vscode.TextEditor) {
               { includeDeclaration: false }
             );
 
-            const methodReferenceCount = methodReferences ? methodReferences.length : 0;
+            // Filter out excluded references for methods
+            const filteredMethodRefs = methodReferences?.filter(reference => {
+              const refPath = reference.uri.path;
+              return !excludePatterns.some(pattern =>
+                new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
+              );
+            });
+
+            const methodReferenceCount = filteredMethodRefs ? filteredMethodRefs.length : 0;
             return decorateFile(methodReferenceCount, method.range.start);
           })
         );
