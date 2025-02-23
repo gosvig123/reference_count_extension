@@ -44,6 +44,7 @@ export async function activate(context: vscode.ExtensionContext) {
 async function updateDecorations(editor: vscode.TextEditor) {
   const config = vscode.workspace.getConfiguration('referenceCounter');
   const excludePatterns = config.get<string[]>('excludePatterns') || [];
+  const includeImports = config.get<boolean>('includeImports') || false;
 
   const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
   const fileExtension = editor.document.uri.path.split('.').pop() || '';
@@ -73,14 +74,14 @@ async function updateDecorations(editor: vscode.TextEditor) {
         'vscode.executeReferenceProvider',
         editor.document.uri,
         symbol.selectionRange.start,
-        { includeDeclaration: false }
+        { includeDeclaration: false },
       );
 
       // Filter out excluded references
-      const filteredReferences = symbolReferences?.filter(reference => {
+      const filteredReferences = symbolReferences?.filter((reference) => {
         const refPath = reference.uri.path;
-        return !excludePatterns.some(pattern =>
-          new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
+        return !excludePatterns.some((pattern) =>
+          new RegExp(pattern.replace(/\*/g, '.*')).test(refPath),
         );
       });
 
@@ -88,44 +89,56 @@ async function updateDecorations(editor: vscode.TextEditor) {
       const referencedFilesCount = getReferencedFiles(filteredReferences, editor);
 
       // Add decoration for the top-level symbol
-      const referenceCount = filteredReferences ? filteredReferences.length - referencedFilesCount : 0;
+      const referenceCount = filteredReferences
+        ? includeImports
+          ? filteredReferences.length
+          : filteredReferences.length - referencedFilesCount
+        : 0;
       decorationsForSymbol.push(decorateFile(referenceCount, symbol.range.start));
 
       // If it's a class, process its methods
       if (symbol.kind === vscode.SymbolKind.Class) {
         const methods = symbol.children.filter(
-          child => child.kind === vscode.SymbolKind.Method
+          (child) => child.kind === vscode.SymbolKind.Method,
         );
 
         // Get references for each method
         const methodDecorations = await Promise.all(
           methods.map(async (method) => {
-            const methodReferences = await vscode.commands.executeCommand<vscode.Location[]>(
-              'vscode.executeReferenceProvider',
-              editor.document.uri,
-              method.selectionRange.start,
-              { includeDeclaration: false }
-            );
+            const methodReferences =
+              await vscode.commands.executeCommand<vscode.Location[]>(
+                'vscode.executeReferenceProvider',
+                editor.document.uri,
+                method.selectionRange.start,
+                { includeDeclaration: false },
+              );
 
             // Filter out excluded references for methods
-            const filteredMethodRefs = methodReferences?.filter(reference => {
+            const filteredMethodRefs = methodReferences?.filter((reference) => {
               const refPath = reference.uri.path;
-              return !excludePatterns.some(pattern =>
-                new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
+              return !excludePatterns.some((pattern) =>
+                new RegExp(pattern.replace(/\*/g, '.*')).test(refPath),
               );
             });
-            const methodReferencedFilesCount = getReferencedFiles(filteredMethodRefs, editor);
+            const methodReferencedFilesCount = getReferencedFiles(
+              filteredMethodRefs,
+              editor,
+            );
 
-            const methodReferenceCount = filteredMethodRefs ? filteredMethodRefs.length - methodReferencedFilesCount : 0;
+            const methodReferenceCount = filteredMethodRefs
+              ? includeImports
+                ? filteredMethodRefs.length
+                : filteredMethodRefs.length - methodReferencedFilesCount
+              : 0;
             return decorateFile(methodReferenceCount, method.range.start);
-          })
+          }),
         );
 
         decorationsForSymbol.push(...methodDecorations);
       }
 
       return decorationsForSymbol;
-    })
+    }),
   );
 
   editor.setDecorations(decorationType, decorations.flat());

@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.91.0"
@@ -67,6 +67,11 @@
             "type": "string"
           },
           "description": "Patterns to exclude from reference counting. all file names that include the added string or folders that contain the added string will be excluded. Example: to exclude all files in the 'node_modules' folder, add 'node_modules' to the list."
+        },
+        "referenceCounter.includeImports": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include import statements in reference count."
         }
       }
     }
