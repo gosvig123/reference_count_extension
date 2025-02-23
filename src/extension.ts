@@ -84,8 +84,11 @@ async function updateDecorations(editor: vscode.TextEditor) {
         );
       });
 
+      // count the number of files that are referenced that is different from the current file
+      const referencedFilesCount = getReferencedFiles(filteredReferences, editor);
+
       // Add decoration for the top-level symbol
-      const referenceCount = filteredReferences ? filteredReferences.length : 0;
+      const referenceCount = filteredReferences ? filteredReferences.length - referencedFilesCount : 0;
       decorationsForSymbol.push(decorateFile(referenceCount, symbol.range.start));
 
       // If it's a class, process its methods
@@ -111,8 +114,9 @@ async function updateDecorations(editor: vscode.TextEditor) {
                 new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
               );
             });
+            const methodReferencedFilesCount = getReferencedFiles(filteredMethodRefs, editor);
 
-            const methodReferenceCount = filteredMethodRefs ? filteredMethodRefs.length : 0;
+            const methodReferenceCount = filteredMethodRefs ? filteredMethodRefs.length - methodReferencedFilesCount : 0;
             return decorateFile(methodReferenceCount, method.range.start);
           })
         );
@@ -127,6 +131,15 @@ async function updateDecorations(editor: vscode.TextEditor) {
   editor.setDecorations(decorationType, decorations.flat());
 }
 
+function getReferencedFiles(references: vscode.Location[], editor: vscode.TextEditor) {
+  const referencedFiles = references?.map(reference => reference.uri.path.split('/').pop());
+  const uniqueReferencedFiles = [...new Set(referencedFiles)];
+  // check if the current file is in the uniqueReferencedFiles
+  const currentFile = editor.document.uri.path.split('/').pop();
+  const isCurrentFileReferenced = uniqueReferencedFiles.includes(currentFile);
+  const referencedFilesCount = uniqueReferencedFiles.length - (isCurrentFileReferenced ? 1 : 0);
+  return referencedFilesCount;
+}
 export function deactivate() {
   if (decorationType) {
     decorationType.dispose();
