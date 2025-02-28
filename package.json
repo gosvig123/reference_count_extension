@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.91.0"
