@@ -3,6 +3,10 @@ import { decorateFile } from './decorateFile';
 
 let decorationType: vscode.TextEditorDecorationType;
 
+// Add debounce function to prevent too-frequent updates
+let decorationUpdateTimeout: NodeJS.Timeout | undefined;
+const DEBOUNCE_DELAY = 500; // ms
+
 export async function activate(context: vscode.ExtensionContext) {
   console.log('Activating extension');
 
@@ -40,17 +44,27 @@ export async function activate(context: vscode.ExtensionContext) {
 
 }
 
-//TODO split into decoration and ref count logic
 async function updateDecorations(editor: vscode.TextEditor) {
+  // Clear any pending update
+  if (decorationUpdateTimeout) {
+    clearTimeout(decorationUpdateTimeout);
+  }
+
+  // Schedule new update with debouncing
+  decorationUpdateTimeout = setTimeout(async () => {
+    await performDecorationsUpdate(editor);
+  }, DEBOUNCE_DELAY);
+}
+
+async function performDecorationsUpdate(editor: vscode.TextEditor) {
   const config = vscode.workspace.getConfiguration('referenceCounter');
   const excludePatterns = config.get<string[]>('excludePatterns') || [];
   const includeImports = config.get<boolean>('includeImports') || false;
 
   const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
   const fileExtension = editor.document.uri.path.split('.').pop() || '';
-  const isAcceptedFile = acceptedExtensions.has(fileExtension);
 
-  if (!isAcceptedFile) {
+  if (!acceptedExtensions.has(fileExtension)) {
     console.log('File type not supported');
     return;
   }
@@ -65,12 +79,24 @@ async function updateDecorations(editor: vscode.TextEditor) {
     return;
   }
 
-  const decorations = await Promise.all(
-    symbols.flatMap(async (symbol) => {
-      const decorationsForSymbol: vscode.DecorationOptions[] = [];
+  // Gather all symbols that need references in a flat array
+  const symbolsToProcess: Array<vscode.DocumentSymbol> = [];
 
-      // Get references for the top-level symbol
-      const symbolReferences = await vscode.commands.executeCommand<vscode.Location[]>(
+  for (const symbol of symbols) {
+    symbolsToProcess.push(symbol);
+
+    // If it's a class, add its methods
+    if (symbol.kind === vscode.SymbolKind.Class) {
+      for (const method of symbol.children.filter(child => child.kind === vscode.SymbolKind.Method)) {
+        symbolsToProcess.push(method);
+      }
+    }
+  }
+
+  // Process all symbols in a single batch to reduce overhead
+  const decorations = await Promise.all(
+    symbolsToProcess.map(async (symbol) => {
+      const references = await vscode.commands.executeCommand<vscode.Location[]>(
         'vscode.executeReferenceProvider',
         editor.document.uri,
         symbol.selectionRange.start,
@@ -78,81 +104,46 @@ async function updateDecorations(editor: vscode.TextEditor) {
       );
 
       // Filter out excluded references
-      const filteredReferences = symbolReferences?.filter((reference) => {
+      const filteredReferences = references?.filter(reference => {
         const refPath = reference.uri.path;
-        return !excludePatterns.some((pattern) =>
-          new RegExp(pattern.replace(/\*/g, '.*')).test(refPath),
+        return !excludePatterns.some(pattern =>
+          new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
         );
       });
 
-      // count the number of files that are referenced that is different from the current file
       const referencedFilesCount = getReferencedFiles(filteredReferences, editor);
 
-      // Add decoration for the top-level symbol
       const referenceCount = filteredReferences
         ? includeImports
           ? filteredReferences.length
           : filteredReferences.length - referencedFilesCount
         : 0;
-      decorationsForSymbol.push(decorateFile(referenceCount, symbol.range.start));
 
-      // If it's a class, process its methods
-      if (symbol.kind === vscode.SymbolKind.Class) {
-        const methods = symbol.children.filter(
-          (child) => child.kind === vscode.SymbolKind.Method,
-        );
-
-        // Get references for each method
-        const methodDecorations = await Promise.all(
-          methods.map(async (method) => {
-            const methodReferences =
-              await vscode.commands.executeCommand<vscode.Location[]>(
-                'vscode.executeReferenceProvider',
-                editor.document.uri,
-                method.selectionRange.start,
-                { includeDeclaration: false },
-              );
-
-            // Filter out excluded references for methods
-            const filteredMethodRefs = methodReferences?.filter((reference) => {
-              const refPath = reference.uri.path;
-              return !excludePatterns.some((pattern) =>
-                new RegExp(pattern.replace(/\*/g, '.*')).test(refPath),
-              );
-            });
-            const methodReferencedFilesCount = getReferencedFiles(
-              filteredMethodRefs,
-              editor,
-            );
-
-            const methodReferenceCount = filteredMethodRefs
-              ? includeImports
-                ? filteredMethodRefs.length
-                : filteredMethodRefs.length - methodReferencedFilesCount
-              : 0;
-            return decorateFile(methodReferenceCount, method.range.start);
-          }),
-        );
-
-        decorationsForSymbol.push(...methodDecorations);
-      }
-
-      return decorationsForSymbol;
-    }),
+      return decorateFile(referenceCount, symbol.range.start);
+    })
   );
 
-  editor.setDecorations(decorationType, decorations.flat());
+  editor.setDecorations(decorationType, decorations);
 }
 
-function getReferencedFiles(references: vscode.Location[], editor: vscode.TextEditor) {
-  const referencedFiles = references?.map(reference => reference.uri.path.split('/').pop());
-  const uniqueReferencedFiles = [...new Set(referencedFiles)];
-  // check if the current file is in the uniqueReferencedFiles
-  const currentFile = editor.document.uri.path.split('/').pop();
-  const isCurrentFileReferenced = uniqueReferencedFiles.includes(currentFile);
-  const referencedFilesCount = uniqueReferencedFiles.length - (isCurrentFileReferenced ? 1 : 0);
-  return referencedFilesCount;
+// Optimize the getReferencedFiles function
+function getReferencedFiles(references: vscode.Location[] | undefined, editor: vscode.TextEditor): number {
+  if (!references || references.length === 0) return 0;
+
+  // Use a Set for efficient unique tracking
+  const uniqueFiles = new Set<string>();
+  const currentFile = editor.document.uri.path.split('/').pop() || '';
+
+  for (const reference of references) {
+    const filename = reference.uri.path.split('/').pop() || '';
+    if (filename !== currentFile) {
+      uniqueFiles.add(filename);
+    }
+  }
+
+  return uniqueFiles.size;
 }
+
 export function deactivate() {
   if (decorationType) {
     decorationType.dispose();
