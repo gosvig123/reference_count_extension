@@ -112,12 +112,17 @@ async function performDecorationsUpdate(editor: vscode.TextEditor) {
       });
 
       const referencedFilesCount = getReferencedFiles(filteredReferences, editor);
+      const isMethod = symbol.kind === vscode.SymbolKind.Method;
 
-      const referenceCount = filteredReferences
+      let referenceCount = filteredReferences
         ? includeImports
           ? filteredReferences.length
           : filteredReferences.length - referencedFilesCount
         : 0;
+
+      if (isMethod) {
+        referenceCount = filteredReferences.length
+      }
 
       return decorateFile(referenceCount, symbol.range.start);
     })
