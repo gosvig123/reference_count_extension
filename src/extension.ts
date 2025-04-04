@@ -10,10 +10,13 @@ const DEBOUNCE_DELAY = 500; // ms
 export async function activate(context: vscode.ExtensionContext) {
   console.log('Activating extension');
 
+  const config = vscode.workspace.getConfiguration('referenceCounter');
+  const minimalisticDecorations = config.get<boolean>('minimalisticDecorations') || false;
+
   // Initialize decorationType
   decorationType = vscode.window.createTextEditorDecorationType({
     after: {
-      margin: '0 0 0 0.5em',
+      margin: minimalisticDecorations ? '0' : '0 0 0 0.5em',
       textDecoration: 'none',
     },
   });
@@ -60,6 +63,7 @@ async function performDecorationsUpdate(editor: vscode.TextEditor) {
   const config = vscode.workspace.getConfiguration('referenceCounter');
   const excludePatterns = config.get<string[]>('excludePatterns') || [];
   const includeImports = config.get<boolean>('includeImports') || false;
+  const minimalisticDecorations = config.get<boolean>('minimalisticDecorations') || false;
 
   const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
   const fileExtension = editor.document.uri.path.split('.').pop() || '';
@@ -124,7 +128,7 @@ async function performDecorationsUpdate(editor: vscode.TextEditor) {
         referenceCount = filteredReferences.length
       }
 
-      return decorateFile(referenceCount, symbol.range.start);
+      return decorateFile(referenceCount, symbol.range.start, minimalisticDecorations);
     })
   );
 
