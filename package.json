@@ -72,6 +72,11 @@
           "type": "boolean",
           "default": false,
           "description": "Include import statements in reference count."
+        },
+        "referenceCounter.minimalisticDecorations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use a minimalistic, compact version of the decorator."
         }
       }
     }
