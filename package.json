@@ -75,7 +75,7 @@
         },
         "referenceCounter.minimalisticDecorations": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Use a minimalistic, compact version of the decorator."
         }
       }
