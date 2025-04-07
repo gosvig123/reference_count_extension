@@ -18,6 +18,8 @@
     "onLanguage:javascriptreact",
     "onLanguage:typescriptreact",
     "onCommand:css-class-counter.countClasses",
+    "onCommand:css-class-counter.countClassesInWorkspace",
+    "onCommand:css-class-counter.findUnusedSymbols",
     "onLanguage:python"
   ],
   "main": "./dist/extension.js",
@@ -57,6 +59,20 @@
     "bufferutil": "^4.0.1"
   },
   "contributes": {
+    "commands": [
+      {
+        "command": "css-class-counter.findUnusedSymbols",
+        "title": "Find Unused Symbols in Workspace"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "unusedSymbolsView",
+          "name": "Unused Symbols"
+        }
+      ]
+    },
     "configuration": {
       "title": "Reference Counter",
       "properties": {

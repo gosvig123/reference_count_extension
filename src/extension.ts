@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { decorateFile } from './decorateFile';
+import { UnusedSymbol, UnusedSymbolsProvider } from './unusedSymbolsView';
 
 let decorationType: vscode.TextEditorDecorationType;
 
@@ -45,6 +46,18 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  // Register the unused symbols provider
+  const unusedSymbolsProvider = new UnusedSymbolsProvider();
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('unusedSymbolsView', unusedSymbolsProvider)
+  );
+
+  // Register the command to find unused symbols
+  context.subscriptions.push(
+    vscode.commands.registerCommand('css-class-counter.findUnusedSymbols', async () => {
+      await findUnusedSymbols(unusedSymbolsProvider);
+    })
+  );
 }
 
 async function updateDecorations(editor: vscode.TextEditor) {
@@ -151,6 +164,158 @@ function getReferencedFiles(references: vscode.Location[] | undefined, editor: v
   }
 
   return uniqueFiles.size;
+}
+
+async function findUnusedSymbols(unusedSymbolsProvider: UnusedSymbolsProvider) {
+  vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'Finding unused symbols in workspace...',
+      cancellable: true,
+    },
+    async (progress, token) => {
+      progress.report({ increment: 0 });
+
+      // Get all files in the workspace
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders) {
+        vscode.window.showErrorMessage('No workspace folder is open');
+        return;
+      }
+
+      const config = vscode.workspace.getConfiguration('referenceCounter');
+      const excludePatterns = config.get<string[]>('excludePatterns') || [];
+
+      // Get all files with supported extensions
+      const acceptedExtensions = ['py', 'js', 'jsx', 'ts', 'tsx'];
+      const filePattern = `**/*.{${acceptedExtensions.join(',')}}`;
+      const files = await vscode.workspace.findFiles(filePattern, '{**/node_modules/**,**/venv/**,**/.git/**}');
+
+      console.log(`Found ${files.length} files with supported extensions`);
+
+      // Filter out files that match exclude patterns
+      const filteredFiles = files.filter(file => {
+        const filePath = file.path;
+        return !excludePatterns.some(pattern =>
+          new RegExp(pattern.replace(/\*/g, '.*')).test(filePath)
+        );
+      });
+
+      console.log(`After filtering, processing ${filteredFiles.length} files`);
+
+      const totalFiles = filteredFiles.length;
+      let processedFiles = 0;
+      const unusedSymbols: UnusedSymbol[] = [];
+      let totalSymbolsFound = 0;
+
+      // Process each file
+      for (const file of filteredFiles) {
+        if (token.isCancellationRequested) {
+          break;
+        }
+
+        try {
+          // Open the document to ensure the symbol provider works correctly
+          await vscode.workspace.openTextDocument(file);
+
+          // Get document symbols
+          const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+            'vscode.executeDocumentSymbolProvider',
+            file
+          );
+
+          if (symbols && symbols.length > 0) {
+            // Process symbols in the file
+            const symbolsToProcess: Array<{ symbol: vscode.DocumentSymbol, parent?: vscode.DocumentSymbol }> = [];
+
+            // Collect all functions, methods, and classes
+            for (const symbol of symbols) {
+              if (symbol.kind === vscode.SymbolKind.Function || symbol.kind === vscode.SymbolKind.Class) {
+                symbolsToProcess.push({ symbol });
+              }
+
+              // If it's a class, add its methods
+              if (symbol.kind === vscode.SymbolKind.Class) {
+                for (const method of symbol.children.filter(child => child.kind === vscode.SymbolKind.Method)) {
+                  symbolsToProcess.push({ symbol: method, parent: symbol });
+                }
+              }
+            }
+
+            totalSymbolsFound += symbolsToProcess.length;
+            console.log(`Found ${symbolsToProcess.length} symbols in ${file.fsPath}`);
+
+            // Check references for each symbol
+            for (const { symbol, parent } of symbolsToProcess) {
+              try {
+                // Get references with includeDeclaration set to true to get all references
+                // We'll manually filter out the declaration later
+                const references = await vscode.commands.executeCommand<vscode.Location[]>(
+                  'vscode.executeReferenceProvider',
+                  file,
+                  symbol.selectionRange.start,
+                  { includeDeclaration: true }
+                );
+
+                // Filter out excluded references and the declaration itself
+                const filteredReferences = references?.filter(reference => {
+                  // Skip the declaration (which is at the same position as the symbol)
+                  if (reference.uri.fsPath === file.fsPath &&
+                      reference.range.start.line === symbol.selectionRange.start.line &&
+                      reference.range.start.character === symbol.selectionRange.start.character) {
+                    return false;
+                  }
+
+                  const refPath = reference.uri.path;
+                  return !excludePatterns.some(pattern =>
+                    new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
+                  );
+                });
+
+                console.log(`Symbol ${symbol.name}: Found ${references?.length || 0} references, ${filteredReferences?.length || 0} after filtering`);
+
+                // If no references after filtering, add to unused symbols
+                if (!filteredReferences || filteredReferences.length === 0) {
+                  let label = symbol.name;
+                  if (parent) {
+                    label = `${parent.name}.${symbol.name}`;
+                  }
+
+                  unusedSymbols.push(
+                    new UnusedSymbol(
+                      label,
+                      vscode.TreeItemCollapsibleState.None,
+                      file.fsPath,
+                      symbol.range,
+                      symbol.kind
+                    )
+                  );
+                }
+              } catch (err) {
+                console.error(`Error processing symbol ${symbol.name}:`, err);
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`Error processing file ${file.fsPath}:`, err);
+        }
+
+        processedFiles++;
+        progress.report({ increment: (100 / totalFiles), message: `Processed ${processedFiles} of ${totalFiles} files` });
+      }
+
+      console.log(`Total symbols found: ${totalSymbolsFound}, Unused symbols: ${unusedSymbols.length}`);
+
+      // Update the tree view with unused symbols
+      unusedSymbolsProvider.refresh(unusedSymbols);
+
+      if (unusedSymbols.length > 0) {
+        vscode.window.showInformationMessage(`Found ${unusedSymbols.length} unused symbols in the workspace.`);
+      } else {
+        vscode.window.showInformationMessage('No unused symbols found in the workspace.');
+      }
+    }
+  );
 }
 
 export function deactivate() {
