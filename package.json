@@ -20,6 +20,7 @@
     "onCommand:css-class-counter.countClasses",
     "onCommand:css-class-counter.countClassesInWorkspace",
     "onCommand:css-class-counter.findUnusedSymbols",
+    "onCommand:css-class-counter.findUnusedSymbolsInCurrentFile",
     "onLanguage:python"
   ],
   "main": "./dist/extension.js",
@@ -63,6 +64,10 @@
       {
         "command": "css-class-counter.findUnusedSymbols",
         "title": "Find Unused Symbols in Workspace"
+      },
+      {
+        "command": "css-class-counter.findUnusedSymbolsInCurrentFile",
+        "title": "Find Unused Symbols in Current File"
       }
     ],
     "views": {
@@ -93,6 +98,16 @@
           "type": "boolean",
           "default": true,
           "description": "Use a minimalistic, compact version of the decorator."
+        },
+        "referenceCounter.dynamicUpdateDelay": {
+          "type": "number",
+          "default": 1000,
+          "description": "Delay in milliseconds before updating unused symbols after a file change."
+        },
+        "referenceCounter.fileAnalysisCooldown": {
+          "type": "number",
+          "default": 5000,
+          "description": "Minimum time in milliseconds between analyses of the same file to prevent excessive CPU usage."
         }
       }
     }

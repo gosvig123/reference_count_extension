@@ -1,12 +1,17 @@
 import * as vscode from 'vscode';
 import { decorateFile } from './decorateFile';
 import { UnusedSymbol, UnusedSymbolsProvider } from './unusedSymbolsView';
+import { fileCache } from './fileCache';
+import { analyzeFileForUnusedSymbols, isSupportedFileType, shouldExcludeFile } from './fileAnalyzer';
 
 let decorationType: vscode.TextEditorDecorationType;
 
 // Add debounce function to prevent too-frequent updates
 let decorationUpdateTimeout: NodeJS.Timeout | undefined;
+let unusedSymbolsUpdateTimeout: NodeJS.Timeout | undefined;
 const DEBOUNCE_DELAY = 500; // ms
+const UNUSED_SYMBOLS_DEBOUNCE_DELAY = 1000; // ms
+const FILE_ANALYSIS_COOLDOWN = 5000; // ms - minimum time between file analyses
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log('Activating extension');
@@ -52,10 +57,49 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.window.registerTreeDataProvider('unusedSymbolsView', unusedSymbolsProvider)
   );
 
-  // Register the command to find unused symbols
+  // Register the command to find unused symbols in the entire workspace
   context.subscriptions.push(
     vscode.commands.registerCommand('css-class-counter.findUnusedSymbols', async () => {
       await findUnusedSymbols(unusedSymbolsProvider);
+    })
+  );
+
+  // Register the command to find unused symbols in the current file
+  context.subscriptions.push(
+    vscode.commands.registerCommand('css-class-counter.findUnusedSymbolsInCurrentFile', async () => {
+      await findUnusedSymbolsInCurrentFile(unusedSymbolsProvider);
+    })
+  );
+
+  // Listen for document changes to update unused symbols dynamically
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument(async (event) => {
+      // Only update for supported file types
+      if (isSupportedFileType(event.document.uri.fsPath)) {
+        updateUnusedSymbolsForFile(event.document.uri, unusedSymbolsProvider);
+      }
+    })
+  );
+
+  // Listen for document saves to update unused symbols
+  context.subscriptions.push(
+    vscode.workspace.onDidSaveTextDocument(async (document) => {
+      // Only update for supported file types
+      if (isSupportedFileType(document.uri.fsPath)) {
+        // Force update on save by ignoring cooldown
+        updateUnusedSymbolsForFile(document.uri, unusedSymbolsProvider, true);
+      }
+    })
+  );
+
+  // Listen for document close to clean up cache
+  context.subscriptions.push(
+    vscode.workspace.onDidCloseTextDocument(async (document) => {
+      // Only update for supported file types
+      if (isSupportedFileType(document.uri.fsPath)) {
+        // Remove the file from the cache when it's closed
+        unusedSymbolsProvider.removeFileSymbols(document.uri.fsPath);
+      }
     })
   );
 }
@@ -175,6 +219,9 @@ async function findUnusedSymbols(unusedSymbolsProvider: UnusedSymbolsProvider) {
     },
     async (progress, token) => {
       progress.report({ increment: 0 });
+
+      // Clear the cache before a full workspace scan
+      fileCache.clear();
 
       // Get all files in the workspace
       const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -314,6 +361,126 @@ async function findUnusedSymbols(unusedSymbolsProvider: UnusedSymbolsProvider) {
       } else {
         vscode.window.showInformationMessage('No unused symbols found in the workspace.');
       }
+
+      // After a full scan, refresh the view from the cache
+      unusedSymbolsProvider.refreshFromCache();
+    }
+  );
+}
+
+/**
+ * Update unused symbols for a specific file with debouncing
+ * @param fileUri URI of the file to update
+ * @param unusedSymbolsProvider The provider to update
+ * @param forceCooldownOverride Whether to force an update regardless of cooldown
+ */
+function updateUnusedSymbolsForFile(
+  fileUri: vscode.Uri,
+  unusedSymbolsProvider: UnusedSymbolsProvider,
+  forceCooldownOverride: boolean = false
+) {
+  const filePath = fileUri.fsPath;
+
+  // Skip if the file is already being processed
+  if (fileCache.isProcessingFile(filePath)) {
+    return;
+  }
+
+  // Check if the file was recently analyzed and we're not forcing an update
+  if (!forceCooldownOverride && !fileCache.shouldReanalyzeFile(filePath, FILE_ANALYSIS_COOLDOWN)) {
+    return;
+  }
+
+  // Clear any pending update for this file
+  if (unusedSymbolsUpdateTimeout) {
+    clearTimeout(unusedSymbolsUpdateTimeout);
+  }
+
+  // Schedule new update with debouncing
+  unusedSymbolsUpdateTimeout = setTimeout(async () => {
+    // Mark file as being processed
+    fileCache.markFileAsProcessing(filePath);
+
+    try {
+      const config = vscode.workspace.getConfiguration('referenceCounter');
+      const excludePatterns = config.get<string[]>('excludePatterns') || [];
+
+      // Skip excluded files
+      if (shouldExcludeFile(filePath, excludePatterns)) {
+        return;
+      }
+
+      // Analyze the file for unused symbols
+      const unusedSymbols = await analyzeFileForUnusedSymbols(fileUri, excludePatterns);
+
+      // Update the provider with the new symbols
+      unusedSymbolsProvider.updateFileSymbols(filePath, unusedSymbols);
+
+      console.log(`Updated unused symbols for ${filePath}: found ${unusedSymbols.length} unused symbols`);
+    } catch (err) {
+      console.error(`Error updating unused symbols for ${filePath}:`, err);
+    } finally {
+      // Mark file as done processing
+      fileCache.markFileAsDoneProcessing(filePath);
+    }
+  }, UNUSED_SYMBOLS_DEBOUNCE_DELAY);
+}
+
+/**
+ * Find unused symbols in the current file
+ * @param unusedSymbolsProvider The provider to update
+ */
+async function findUnusedSymbolsInCurrentFile(unusedSymbolsProvider: UnusedSymbolsProvider) {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showErrorMessage('No active editor');
+    return;
+  }
+
+  const fileUri = editor.document.uri;
+  const filePath = fileUri.fsPath;
+
+  if (!isSupportedFileType(filePath)) {
+    vscode.window.showErrorMessage('File type not supported for unused symbol detection');
+    return;
+  }
+
+  vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Finding unused symbols in ${filePath.split('/').pop()}...`,
+      cancellable: false,
+    },
+    async (progress) => {
+      progress.report({ increment: 0 });
+
+      const config = vscode.workspace.getConfiguration('referenceCounter');
+      const excludePatterns = config.get<string[]>('excludePatterns') || [];
+
+      // Skip excluded files
+      if (shouldExcludeFile(filePath, excludePatterns)) {
+        vscode.window.showErrorMessage('This file is excluded from analysis');
+        return;
+      }
+
+      try {
+        // Analyze the file for unused symbols
+        const unusedSymbols = await analyzeFileForUnusedSymbols(fileUri, excludePatterns);
+
+        // Update the provider with the new symbols
+        unusedSymbolsProvider.updateFileSymbols(filePath, unusedSymbols);
+
+        progress.report({ increment: 100 });
+
+        if (unusedSymbols.length > 0) {
+          vscode.window.showInformationMessage(`Found ${unusedSymbols.length} unused symbols in the current file.`);
+        } else {
+          vscode.window.showInformationMessage('No unused symbols found in the current file.');
+        }
+      } catch (err) {
+        console.error(`Error finding unused symbols in ${filePath}:`, err);
+        vscode.window.showErrorMessage(`Error finding unused symbols: ${err}`);
+      }
     }
   );
 }
@@ -321,5 +488,14 @@ async function findUnusedSymbols(unusedSymbolsProvider: UnusedSymbolsProvider) {
 export function deactivate() {
   if (decorationType) {
     decorationType.dispose();
+  }
+
+  // Clear any pending timeouts
+  if (decorationUpdateTimeout) {
+    clearTimeout(decorationUpdateTimeout);
+  }
+
+  if (unusedSymbolsUpdateTimeout) {
+    clearTimeout(unusedSymbolsUpdateTimeout);
   }
 }
