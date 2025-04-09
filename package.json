@@ -64,10 +64,6 @@
       {
         "command": "css-class-counter.findUnusedSymbols",
         "title": "Find Unused Symbols in Workspace"
-      },
-      {
-        "command": "css-class-counter.findUnusedSymbolsInCurrentFile",
-        "title": "Find Unused Symbols in Current File"
       }
     ],
     "views": {
@@ -108,6 +104,11 @@
           "type": "number",
           "default": 5000,
           "description": "Minimum time in milliseconds between analyses of the same file to prevent excessive CPU usage."
+        },
+        "referenceCounter.enableDynamicUnusedSymbolUpdates": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable dynamic updates of the 'Unused Symbols' view when files are changed or saved. If false, the view only updates when 'Find Unused Symbols in Workspace' is run."
         }
       }
     }

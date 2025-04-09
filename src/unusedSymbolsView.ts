@@ -47,35 +47,18 @@ export class UnusedSymbolsProvider implements vscode.TreeDataProvider<UnusedSymb
     this.unusedSymbols = unusedSymbols;
     this._onDidChangeTreeData.fire();
   }
-
-  /**
-   * Update the tree view with unused symbols from the file cache
-   */
-  refreshFromCache(): void {
-    this.unusedSymbols = fileCache.getAllUnusedSymbols();
-    this._onDidChangeTreeData.fire();
-  }
-
-  /**
-   * Update unused symbols for a specific file
-   * @param filePath Path to the file
-   * @param symbols Array of unused symbols for the file
-   */
-  updateFileSymbols(filePath: string, symbols: UnusedSymbol[]): void {
-    // Update the cache
-    fileCache.updateUnusedSymbolsForFile(filePath, symbols);
-
-    // Refresh the view with all symbols from the cache
-    this.refreshFromCache();
-  }
+  // Method updateFileSymbols removed as it's no longer used.
 
   /**
    * Remove a file's symbols from the view
    * @param filePath Path to the file
    */
   removeFileSymbols(filePath: string): void {
+    // Only remove the file from the cache, do not trigger a view refresh.
+    // The view should only be refreshed by a full workspace scan.
+    console.log(`Provider removeFileSymbols called for ${filePath}. Removing from cache only.`); // Log for debugging
     fileCache.removeFile(filePath);
-    this.refreshFromCache();
+    // Removed this.refreshFromCache();
   }
 
   getTreeItem(element: UnusedSymbol): vscode.TreeItem {
