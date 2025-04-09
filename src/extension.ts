@@ -20,7 +20,6 @@ export async function activate(context: vscode.ExtensionContext) {
   const minimalisticDecorations = config.get<boolean>('minimalisticDecorations', false);
   const enableDynamicUpdates = config.get<boolean>('enableDynamicUnusedSymbolUpdates', false);
   const dynamicUpdateDelay = config.get<number>('dynamicUpdateDelay', 1000);
-  const fileAnalysisCooldown = config.get<number>('fileAnalysisCooldown', 5000);
 
   // Initialize decorationType
   decorationType = vscode.window.createTextEditorDecorationType({

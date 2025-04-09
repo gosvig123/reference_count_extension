@@ -100,11 +100,6 @@
           "default": 1000,
           "description": "Delay in milliseconds before updating unused symbols after a file change."
         },
-        "referenceCounter.fileAnalysisCooldown": {
-          "type": "number",
-          "default": 5000,
-          "description": "Minimum time in milliseconds between analyses of the same file to prevent excessive CPU usage."
-        },
         "referenceCounter.enableDynamicUnusedSymbolUpdates": {
           "type": "boolean",
           "default": false,
