@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 
 // Optimize the getReferencedFiles function
 export function getReferencedFiles(references: vscode.Location[] | undefined, editor: vscode.TextEditor): number {
