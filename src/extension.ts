@@ -84,16 +84,13 @@ async function performDecorationsUpdate(editor: vscode.TextEditor) {
       return;
     }
 
-    const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-      'vscode.executeDocumentSymbolProvider',
-      editor.document.uri,
-    );
-
-    if (!symbols || symbols.length === 0) {
+    await symbolManager.getAndSetSymbolsForActiveFile(editor.document.uri);
+    const { activeFileSymbolStore } = symbolManager;
+    if (!activeFileSymbolStore) {
       return;
     }
 
-    await processSymbols(editor, symbols, {
+    await processSymbols(editor, {
       excludePatterns,
       includeImports,
       minimalisticDecorations
@@ -108,7 +105,6 @@ async function performDecorationsUpdate(editor: vscode.TextEditor) {
 // Extract symbol processing logic to separate function
 async function processSymbols(
   editor: vscode.TextEditor, 
-  symbols: vscode.DocumentSymbol[],
   options: {
     excludePatterns: string[],
     includeImports: boolean,
