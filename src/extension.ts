@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { decorateFile } from './decorateFile';
-import symbolManager from './symbolManager';
+import { symbolManager } from './symbolManager';
 import { getReferencedFiles } from './utils/utils';
+import { fileRefCounter } from './fileRefCounter';
 let decorationType: vscode.TextEditorDecorationType;
 
 // Add debounce function to prevent too-frequent updates
@@ -9,18 +10,9 @@ let decorationUpdateTimeout: NodeJS.Timeout | undefined;
 const DEBOUNCE_DELAY = 500; // ms
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('Activating extension');
-
-  const config = vscode.workspace.getConfiguration('referenceCounter');
-  const minimalisticDecorations = config.get<boolean>('minimalisticDecorations') || false;
-
+ 
   // Initialize decorationType
-  decorationType = vscode.window.createTextEditorDecorationType({
-    after: {
-      margin: minimalisticDecorations ? '0' : '0 0 0 0.5em',
-      textDecoration: 'none',
-    },
-  });
+  decorationType = fileRefCounter.decorationType;
   // Update decorations for the current active editor
   if (vscode.window.activeTextEditor) {
     await updateDecorations(vscode.window.activeTextEditor);

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-class SymbolManager {
+export class SymbolManagerClass {
 
     constructor() {
         this.activeFile = null;
@@ -14,7 +14,7 @@ class SymbolManager {
 
     public async getAndSetSymbolsForActiveFile(documentUri: vscode.Uri) {
         this.activeFile = documentUri;
-        this.activeFileSymbolStore = new Map();
+this.activeFileSymbolStore = new Map();
         this.activeFileSymbolReferences = new Map();
 
         const symbols = await vscode.commands.executeCommand(
@@ -59,5 +59,5 @@ class SymbolManager {
     
 }
 
-const symbolManager = new SymbolManager();
-export default symbolManager;
+export const symbolManager = new SymbolManagerClass();
+
