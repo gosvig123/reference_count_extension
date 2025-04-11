@@ -60,6 +60,14 @@
     "configuration": {
       "title": "Reference Counter",
       "properties": {
+        "referenceCounter.fileExtensions": {
+          "type": "array",
+          "default": [ "py", "js", "jsx", "ts", "tsx" ],
+          "items": {
+            "type": "string"
+          },
+          "description": "File extensions to include in reference counting."
+        },
         "referenceCounter.excludePatterns": {
           "type": "array",
           "default": [],

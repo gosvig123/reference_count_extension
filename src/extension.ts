@@ -55,23 +55,10 @@ async function updateDecorations(editor: vscode.TextEditor) {
 async function performDecorationsUpdate(editor: vscode.TextEditor) {
   try {
 
-    // Improved file type checking
-    const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
-    const fileExtension = editor.document.uri.path.split('.').pop()?.toLowerCase() || '';
-    
-    // Check if file is binary or unsupported
-    if (!acceptedExtensions.has(fileExtension) || editor.document.isClosed || !editor.document.uri.fsPath) {
+
+    if (!fileRefCounter.isActiveFileSupported()) {
       return;
     }
-
-    // Check file size before processing (optional)
-    const maxFileSize = 1024 * 1024; // 1MB
-    const stats = await vscode.workspace.fs.stat(editor.document.uri);
-    if (stats.size > maxFileSize) {
-      console.log('File too large to process');
-      return;
-    }
-
     await symbolManager.getAndSetSymbolsForActiveFile(editor.document.uri);
     const { activeFileSymbolStore } = symbolManager;
     if (!activeFileSymbolStore) {

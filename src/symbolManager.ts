@@ -12,7 +12,6 @@ export class SymbolManagerClass {
     public activeFile: vscode.Uri | null = null;
     public activeFileSymbolStore: Map<string, vscode.DocumentSymbol> = new Map();
     public activeFileSymbolReferences: Map<string, vscode.Location[]> = new Map();
-    public activeEditor: vscode.TextEditor | null = null;
     public async getAndSetSymbolsForActiveFile(documentUri: vscode.Uri) {
         this.activeFile = documentUri;
 this.activeFileSymbolStore = new Map();
