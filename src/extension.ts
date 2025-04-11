@@ -123,11 +123,6 @@ async function processSymbols(
 async function processSymbol(
   editor: vscode.TextEditor,
   symbol: vscode.DocumentSymbol,
-  options: {
-    excludePatterns: string[],
-    includeImports: boolean,
-    minimalisticDecorations: boolean
-  }
 ): Promise<vscode.DecorationOptions | null> {
   try {
     const references = await vscode.commands.executeCommand<vscode.Location[]>(
@@ -139,16 +134,15 @@ async function processSymbol(
 
     if (!references) return null;
 
-    const filteredReferences = filterReferences(references, options.excludePatterns);
+    const filteredReferences = filterReferences(references, fileRefCounter.excludePatterns);
     const referencedFilesCount = getReferencedFiles(filteredReferences, editor);
     const referenceCount = calculateReferenceCount(
       filteredReferences,
       referencedFilesCount,
       symbol,
-      options
     );
 
-    return decorateFile(referenceCount, symbol.range.start, options.minimalisticDecorations);
+    return decorateFile(referenceCount, symbol.range.start, fileRefCounter.minimalisticDecorations);
   } catch (error) {
     console.error('Error processing single symbol:', error);
     return null;
@@ -171,7 +165,6 @@ function calculateReferenceCount(
   filteredReferences: vscode.Location[],
   referencedFilesCount: number,
   symbol: vscode.DocumentSymbol,
-  options: { includeImports: boolean }
 ): number {
   const isMethod = symbol.kind === vscode.SymbolKind.Method;
   
@@ -179,7 +172,7 @@ function calculateReferenceCount(
     return filteredReferences.length;
   }
 
-  return options.includeImports
+  return  fileRefCounter.includeImports
     ? filteredReferences.length
     : filteredReferences.length - referencedFilesCount;
 }
