@@ -54,10 +54,6 @@ async function updateDecorations(editor: vscode.TextEditor) {
 
 async function performDecorationsUpdate(editor: vscode.TextEditor) {
   try {
-    const config = vscode.workspace.getConfiguration('referenceCounter');
-    const excludePatterns = config.get<string[]>('excludePatterns') || [];
-    const includeImports = config.get<boolean>('includeImports') || false;
-    const minimalisticDecorations = config.get<boolean>('minimalisticDecorations') || false;
 
     // Improved file type checking
     const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
@@ -82,11 +78,7 @@ async function performDecorationsUpdate(editor: vscode.TextEditor) {
       return;
     }
 
-    await processSymbols(editor, {
-      excludePatterns,
-      includeImports,
-      minimalisticDecorations
-    });
+    await processSymbols(editor);
 
   } catch (error) {
     console.error('Error in performDecorationsUpdate:', error);
@@ -97,11 +89,7 @@ async function performDecorationsUpdate(editor: vscode.TextEditor) {
 // Extract symbol processing logic to separate function
 async function processSymbols(
   editor: vscode.TextEditor, 
-  options: {
-    excludePatterns: string[],
-    includeImports: boolean,
-    minimalisticDecorations: boolean
-  }
+ 
 ) {
   try {
     await symbolManager.getAndSetSymbolsForActiveFile(editor.document.uri);
@@ -109,7 +97,7 @@ async function processSymbols(
 
     const decorations = await Promise.all(
       Array.from(activeFileSymbolStore.values()).map(symbol => 
-        processSymbol(editor, symbol, options)
+        processSymbol(editor, symbol)
       )
     );
 
@@ -125,12 +113,7 @@ async function processSymbol(
   symbol: vscode.DocumentSymbol,
 ): Promise<vscode.DecorationOptions | null> {
   try {
-    const references = await vscode.commands.executeCommand<vscode.Location[]>(
-      'vscode.executeReferenceProvider',
-      editor.document.uri,
-      symbol.selectionRange.start,
-      { includeDeclaration: false },
-    );
+    const references = await symbolManager.getSymbolReferences(symbol);
 
     if (!references) return null;
 

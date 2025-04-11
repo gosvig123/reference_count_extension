@@ -22,16 +22,8 @@ class FileRefCounterClass extends SymbolManagerClass {
             },
         });
     }
-
-    public filterReferences(references: vscode.Location[], excludePatterns: string[]): vscode.Location[] {
-        return references.filter(reference => {
-            const refPath = reference.uri.path;
-            return !excludePatterns.some(pattern =>
-              new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
-            );
-        });
-    }
     
+ 
 }
 
 export const fileRefCounter = new FileRefCounterClass();

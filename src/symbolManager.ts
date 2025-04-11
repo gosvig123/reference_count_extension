@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+
 export class SymbolManagerClass {
 
     constructor() {
@@ -11,7 +12,7 @@ export class SymbolManagerClass {
     public activeFile: vscode.Uri | null = null;
     public activeFileSymbolStore: Map<string, vscode.DocumentSymbol> = new Map();
     public activeFileSymbolReferences: Map<string, vscode.Location[]> = new Map();
-
+    public activeEditor: vscode.TextEditor | null = null;
     public async getAndSetSymbolsForActiveFile(documentUri: vscode.Uri) {
         this.activeFile = documentUri;
 this.activeFileSymbolStore = new Map();
@@ -41,9 +42,10 @@ this.activeFileSymbolStore = new Map();
     }
 
     public async getSymbolReferences(symbol: vscode.DocumentSymbol) {
+        const activeEditor = vscode.window.activeTextEditor;
         const references = await vscode.commands.executeCommand<vscode.Location[]>(
             'vscode.executeReferenceProvider',
-            this.activeFile,
+            activeEditor?.document.uri,
             symbol.selectionRange.start,
             { includeDeclaration: false },
         );
