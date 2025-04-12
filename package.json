@@ -57,6 +57,31 @@
     "bufferutil": "^4.0.1"
   },
   "contributes": {
+    "commands": [
+      {
+        "command": "referenceCounter.refreshUnusedSymbols",
+        "title": "Refresh Unused Symbols",
+        "category": "Reference Counter",
+        "icon": "$(refresh)"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "name": "Unused Symbols",
+          "id": "referenceCounter.unusedSymbols"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "referenceCounter.refreshUnusedSymbols",
+          "when": "view == referenceCounter.unusedSymbols",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Reference Counter",
       "properties": {
@@ -70,11 +95,11 @@
         },
         "referenceCounter.excludePatterns": {
           "type": "array",
-          "default": [],
+          "default": ["node_modules", ".next", "dist", "build", "out", ".git", "coverage"],
           "items": {
             "type": "string"
           },
-          "description": "Patterns to exclude from reference counting. all file names that include the added string or folders that contain the added string will be excluded. Example: to exclude all files in the 'node_modules' folder, add 'node_modules' to the list."
+          "description": "Patterns to exclude from reference counting. All file names that include the added string or folders that contain the added string will be excluded. Example: to exclude all files in the 'node_modules' folder, add 'node_modules' to the list."
         },
         "referenceCounter.includeImports": {
           "type": "boolean",
