@@ -5,6 +5,8 @@
 [![Rating](https://img.shields.io/visual-studio-marketplace/r/gosvig123.css-class-counter)](https://marketplace.visualstudio.com/items?itemName=gosvig123.css-class-counter&ssr=false#review-details)
 [![GitHub stars](https://img.shields.io/github/stars/gosvig123/reference_count_extension?style=social)](https://github.com/gosvig123/reference_count_extension)
 
+<a href="https://www.buymeacoffee.com/gosvig123" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 ## Why Use Reference Counter?
 
 - **Identify Dead Code**: Find unused functions and classes that can be safely removed
@@ -107,7 +109,7 @@ If you like this extension, please:
 - ⭐ Star the [GitHub repository](https://github.com/gosvig123/reference_count_extension)
 - ✍️ Rate and review on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=gosvig123.css-class-counter&ssr=false#review-details)
 - 📣 Share it with your friends and colleagues
-- ☕ Support development via [Buy Me A Coffee](https://www.buymeacoffee.com/kristiangosvig)
+- ☕ Support development via [Buy Me A Coffee](https://www.buymeacoffee.com/gosvig123)
 
 For support, please [open an issue](https://github.com/gosvig123/reference_count_extension/issues) on GitHub.
 
