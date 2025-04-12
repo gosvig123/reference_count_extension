@@ -4,9 +4,14 @@
 [![Installs](https://img.shields.io/visual-studio-marketplace/i/gosvig123.css-class-counter)](https://marketplace.visualstudio.com/items?itemName=gosvig123.css-class-counter)
 [![Rating](https://img.shields.io/visual-studio-marketplace/r/gosvig123.css-class-counter)](https://marketplace.visualstudio.com/items?itemName=gosvig123.css-class-counter&ssr=false#review-details)
 [![GitHub stars](https://img.shields.io/github/stars/gosvig123/reference_count_extension?style=social)](https://github.com/gosvig123/reference_count_extension)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow)](https://www.buymeacoffee.com/kristiangosvig)
 
-This is an open source extension for Visual Studio Code that helps you understand your codebase by:
+## Why Use Reference Counter?
+
+- **Identify Dead Code**: Find unused functions and classes that can be safely removed
+- **Understand Impact**: See how widely used a function is before refactoring it
+- **Improve Code Quality**: Maintain a cleaner codebase by removing unused code
+- **Save Time**: No more manual searches to find all references
+
 
 1. Displaying the number of times a function, class, or method is called directly in your editor
 2. Identifying unused symbols in your workspace with a dedicated view
@@ -19,13 +24,6 @@ This is an open source extension for Visual Studio Code that helps you understan
 ### Unused Symbols View
 ![Unused Symbols View](https://raw.githubusercontent.com/gosvig123/reference_count_extension/main/workspace_unused.png)
 
-
-## Why Use Reference Counter?
-
-- **Identify Dead Code**: Find unused functions and classes that can be safely removed
-- **Understand Impact**: See how widely used a function is before refactoring it
-- **Improve Code Quality**: Maintain a cleaner codebase by removing unused code
-- **Save Time**: No more manual searches to find all references
 
 
 ## Features
@@ -43,10 +41,6 @@ This is an open source extension for Visual Studio Code that helps you understan
 - **Performance Improvements**: Automatically excludes node_modules, .next, dist, and other build folders
 - **Improved Symbol Detection**: Better handling of nested symbols and class methods
 - **Enhanced Logging**: More detailed logging for easier troubleshooting
-
-## Installation
-
-Install directly from the [Visual Studio Code Marketplace](https://marketplace.visualstudio.com/items?itemName=gosvig123.css-class-counter) or search for "Reference Counter" in the Extensions view (Ctrl+Shift+X).
 
 ## Usage
 
