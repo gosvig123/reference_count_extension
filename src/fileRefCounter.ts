@@ -88,30 +88,34 @@ class FileRefCounterClass extends SymbolManagerClass {
      symbol: vscode.DocumentSymbol,
    ): Promise<vscode.DecorationOptions | null> {
      try {
-       // Use inherited method
        const references = await this.getSymbolReferences(symbol);
 
-       if (!references) return null;
+       if (references.length === 0) return null;
 
-       // Use class property and external function
        const filteredReferences = filterReferences(references, this.excludePatterns);
-
-       // Categorize references as imports or actual usage
        const { usageReferences } = await categorizeReferences(filteredReferences);
 
        // Calculate reference count based on our settings
        let referenceCount: number;
 
        if (this.includeImports) {
-         // Include all references
          referenceCount = filteredReferences.length;
        } else {
-         // Only count usage references
          referenceCount = usageReferences.length;
-
        }
 
-       // Use class property
+       // Check if any reference is in the same range as the symbol
+       const symbolRange = symbol.range;
+       const selfReferenceCount = references.filter(ref => 
+         ref.range.start.line === symbolRange.start.line 
+       ).length;
+
+       // Deduct self-references from the count
+       if (selfReferenceCount > 0) {
+        const adjustedReferenceCount = referenceCount - selfReferenceCount;
+        referenceCount = Math.max(0, adjustedReferenceCount);
+       }
+
        return decorateFile(referenceCount, symbol.range.start, this.minimalisticDecorations);
      } catch (error) {
        console.error('Error processing single symbol:', error);

@@ -2,11 +2,21 @@ import * as vscode from 'vscode';
 
 export function filterReferences(
   references: vscode.Location[],
-  excludePatterns: string[]): vscode.Location[] {
+  excludePatterns: string[]
+): vscode.Location[] {
+  // If no exclude patterns, return all references
+  if (!excludePatterns.length) {
+    return references;
+  }
+
   return references.filter(reference => {
-    const refPath = reference.uri.path;
-    return !excludePatterns.some(pattern => new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
-    );
+    const refPath = reference.uri.fsPath; // Use fsPath instead of path for consistent formatting
+    
+    // Only exclude if the path matches one of the exclude patterns exactly
+    return !excludePatterns.some(pattern => {
+      const regexPattern = pattern.replace(/\*/g, '[^/]*');  // More precise wildcard handling
+      return new RegExp(`(^|/)${regexPattern}(/|$)`).test(refPath);
+    });
   });
 }
 

@@ -55,14 +55,28 @@ export class SymbolManagerClass {
 
     public async getSymbolReferences(symbol: vscode.DocumentSymbol) {
         const activeEditor = vscode.window.activeTextEditor;
-        const references = await vscode.commands.executeCommand<vscode.Location[]>(
-            'vscode.executeReferenceProvider',
-            activeEditor?.document.uri,
-            symbol.selectionRange.start,
-            { includeDeclaration: false },
-        );
-        return references;
+        if (!activeEditor || !this.activeFile) return [];
+
+        // Use the position from the symbol's range
+        const position = symbol.selectionRange.start;
+        
+        try {
+            // Try LSP first
+            const references = await vscode.commands.executeCommand<vscode.Location[]>(
+                'vscode.executeReferenceProvider',
+                this.activeFile, // Use stored URI instead of activeEditor
+                position,
+                { includeDeclaration: false }
+            );
+
+
+            return references || [];
+        } catch (error) {
+            console.error('Error getting references:', error);
+            return [];
+        }
     }
+
 
     public addSymbol(symbol: vscode.DocumentSymbol) {
         if (this.activeFile) {
