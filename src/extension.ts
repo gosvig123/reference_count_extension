@@ -48,18 +48,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Update when the document is edited
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument(async (event) => {
-      if (event.document === vscode.window.activeTextEditor?.document) {
-        // Update workspace symbols
-        await workspaceSymbolManager.updateFileSymbols(event.document.uri);
-
-        fileRefCounter.updateDecorations(vscode.window.activeTextEditor);
-      }
-    }),
-  );
-
   // Add listener for file save events
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(async (document) => {
@@ -71,6 +59,12 @@ export async function activate(context: vscode.ExtensionContext) {
       if (supportedExtensions.includes(fileExtension)) {
         // Update symbols for the saved file
         await workspaceSymbolManager.updateFileSymbols(document.uri);
+
+        // Update decorations for the active editor IF it's the saved document
+        if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document === document) {
+          // Call updateDecorations - no await needed due to internal debouncing
+          fileRefCounter.updateDecorations(vscode.window.activeTextEditor);
+        }
 
         // Refresh the unused symbols view
         vscode.commands.executeCommand('referenceCounter.refreshUnusedSymbols');
