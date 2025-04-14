@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "icon": "icon.png",
   "engines": {
     "vscode": "1.96.2"
@@ -113,8 +113,8 @@
         },
         "referenceCounter.enableUnusedSymbols": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable the 'Unused Symbols' view and automatic background scanning for unused symbols."
+          "default": false,
+          "description": "Enable the 'Unused Symbols in workspace' view * (experimental)"
         }
       }
     }
