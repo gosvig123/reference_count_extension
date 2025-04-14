@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "icon": "icon.png",
   "engines": {
     "vscode": "1.96.2"
@@ -47,7 +47,7 @@
     "type": "git",
     "url": "https://github.com/gosvig123/reference_count_extension"
   },
-  "license": "MIT",
+"license": "MIT",
   "dependencies": {
     "react": "^18.3.1",
     "strip-ansi": "^6.0.1",
@@ -110,6 +110,11 @@
           "type": "boolean",
           "default": true,
           "description": "Use a minimalistic, compact version of the decorator."
+        },
+        "referenceCounter.enableUnusedSymbols": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the 'Unused Symbols' view and automatic background scanning for unused symbols."
         }
       }
     }
