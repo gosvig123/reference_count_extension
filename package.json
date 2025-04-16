@@ -1,6 +1,6 @@
 {
   "name": "reference-counter",
-  "displayName": "Reference Counter",
+  "displayName": "Code Reference Usage Counter",
   "description": "Counts and displays the usage of references in your code",
   "version": "0.2.9",
   "icon": "icon.png",
