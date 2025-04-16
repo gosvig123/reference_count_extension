@@ -1,8 +1,8 @@
 {
-  "name": "css-class-counter",
+  "name": "reference-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "icon": "icon.png",
   "engines": {
     "vscode": "1.96.2"
@@ -11,13 +11,10 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:css",
-    "onLanguage:html",
     "onLanguage:javascript",
     "onLanguage:typescript",
     "onLanguage:javascriptreact",
     "onLanguage:typescriptreact",
-    "onCommand:css-class-counter.countClasses",
     "onLanguage:python"
   ],
   "main": "./dist/extension.js",
@@ -47,15 +44,7 @@
     "type": "git",
     "url": "https://github.com/gosvig123/reference_count_extension"
   },
-"license": "MIT",
-  "dependencies": {
-    "react": "^18.3.1",
-    "strip-ansi": "^6.0.1",
-    "string-width": "^4.2.3",
-    "wrap-ansi": "^7.0.0",
-    "babel-plugin-macros": "^3.1.0",
-    "bufferutil": "^4.0.1"
-  },
+  "license": "MIT",
   "contributes": {
     "commands": [
       {
@@ -87,7 +76,13 @@
       "properties": {
         "referenceCounter.fileExtensions": {
           "type": "array",
-          "default": [ "py", "js", "jsx", "ts", "tsx" ],
+          "default": [
+            "py",
+            "js",
+            "jsx",
+            "ts",
+            "tsx"
+          ],
           "items": {
             "type": "string"
           },
@@ -95,7 +90,15 @@
         },
         "referenceCounter.excludePatterns": {
           "type": "array",
-          "default": ["node_modules", ".next", "dist", "build", "out", ".git", "coverage"],
+          "default": [
+            "node_modules",
+            ".next",
+            "dist",
+            "build",
+            "out",
+            ".git",
+            "coverage"
+          ],
           "items": {
             "type": "string"
           },
@@ -113,8 +116,8 @@
         },
         "referenceCounter.enableUnusedSymbols": {
           "type": "boolean",
-          "default": false,
-          "description": "Enable the 'Unused Symbols in workspace' view * (experimental)"
+          "default": true,
+          "description": "Enable the 'Unused Symbols in workspace' view."
         }
       }
     }
