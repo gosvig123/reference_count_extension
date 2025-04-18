@@ -1,7 +1,17 @@
 import * as vscode from 'vscode';
+import { getDocumentSymbols, getSymbolReferences, SUPPORTED_SYMBOL_KINDS } from './utils/symbolUtils';
 
-
+/**
+ * Base class for symbol management
+ * Provides core functionality for tracking symbols in a file
+ */
 export class SymbolManagerClass {
+    // Current file being analyzed
+    public activeFile: vscode.Uri | null = null;
+
+    // Maps to store symbols and their references
+    public activeFileSymbolStore: Map<string, vscode.DocumentSymbol> = new Map();
+    public activeFileSymbolReferences: Map<string, vscode.Location[]> = new Map();
 
     constructor() {
         this.activeFile = null;
@@ -9,80 +19,55 @@ export class SymbolManagerClass {
         this.activeFileSymbolReferences = new Map();
     }
 
-    public activeFile: vscode.Uri | null = null;
-    public activeFileSymbolStore: Map<string, vscode.DocumentSymbol> = new Map();
-    public activeFileSymbolReferences: Map<string, vscode.Location[]> = new Map();
-    public async getAndSetSymbolsForActiveFile(documentUri: vscode.Uri) {
-        console.log(`Getting symbols for file: ${documentUri.fsPath}`);
+    /**
+     * Get and store symbols for the active file
+     */
+    public async getAndSetSymbolsForActiveFile(documentUri: vscode.Uri): Promise<void> {
         this.activeFile = documentUri;
         this.activeFileSymbolStore = new Map();
         this.activeFileSymbolReferences = new Map();
 
         try {
-            const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-                'vscode.executeDocumentSymbolProvider',
-                documentUri
-            );
+            const symbols = await getDocumentSymbols(documentUri);
+            if (symbols.length === 0) return;
 
-            if (!Array.isArray(symbols)) {
-                console.log('No symbols found or invalid symbols returned');
-                return;
-            }
-
-            // Process all symbols including nested ones
-            const processSymbols = async (symbolList: vscode.DocumentSymbol[]) => {
-                for (const symbol of symbolList) {
-                    // Add the symbol to the store
-                    this.addSymbol(symbol);
-
-                    // Get references for this symbol
-                    const references = await this.getSymbolReferences(symbol);
-                    this.activeFileSymbolReferences.set(symbol.name, references);
-
-                    // Process children recursively only if this is a class
-                    if (symbol.kind === vscode.SymbolKind.Class && symbol.children && symbol.children.length > 0) {
-                        await processSymbols(symbol.children);
-                    }
-                }
-            };
-
-            await processSymbols(symbols);
-
+            // Process symbols and their children
+            await this.processSymbols(symbols);
         } catch (error) {
             console.error(`Error getting symbols for ${documentUri.fsPath}:`, error);
         }
     }
 
-    public async getSymbolReferences(symbol: vscode.DocumentSymbol) {
-        const activeEditor = vscode.window.activeTextEditor;
-        if (!activeEditor || !this.activeFile) return [];
+    /**
+     * Process symbols recursively
+     */
+    private async processSymbols(symbolList: vscode.DocumentSymbol[]): Promise<void> {
+        for (const symbol of symbolList) {
+            // Only process supported symbol kinds
+            if (SUPPORTED_SYMBOL_KINDS.includes(symbol.kind)) {
+                // Add the symbol to the store
+                this.addSymbol(symbol);
 
-        // Use the position from the symbol's range
-        const position = symbol.selectionRange.start;
-        
-        try {
-            // Try LSP first
-            const references = await vscode.commands.executeCommand<vscode.Location[]>(
-                'vscode.executeReferenceProvider',
-                this.activeFile, // Use stored URI instead of activeEditor
-                position,
-                { includeDeclaration: false }
-            );
+                // Get references for this symbol
+                if (this.activeFile) {
+                    const references = await getSymbolReferences(this.activeFile, symbol);
+                    this.activeFileSymbolReferences.set(symbol.name, references);
+                }
+            }
 
-
-            return references || [];
-        } catch (error) {
-            console.error('Error getting references:', error);
-            return [];
+            // Process children recursively only if this is a class
+            if (symbol.kind === vscode.SymbolKind.Class && symbol.children && symbol.children.length > 0) {
+                await this.processSymbols(symbol.children);
+            }
         }
     }
 
-
-    public addSymbol(symbol: vscode.DocumentSymbol) {
+    /**
+     * Add a symbol to the store
+     */
+    protected addSymbol(symbol: vscode.DocumentSymbol): void {
         if (this.activeFile) {
             this.activeFileSymbolStore.set(symbol.name, symbol);
         }
     }
-
 }
-

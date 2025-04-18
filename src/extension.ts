@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-// Import the required components
 import { fileRefCounter } from './fileRefCounter';
 import { workspaceSymbolManager } from './workspaceSymbolManager';
 import { UnusedSymbolsProvider } from './unusedSymbolsView';
+import { configManager } from './config';
 
 // Constants for IDs used within the extension
 const REFRESH_UNUSED_SYMBOLS_COMMAND_ID = 'referenceCounter.refreshUnusedSymbols';
@@ -13,8 +13,6 @@ const UNUSED_SYMBOLS_VIEW_ID = 'referenceCounter.unusedSymbols';
  * @returns An array of disposables related to the unused symbols view.
  */
 function setupUnusedSymbolsView(): vscode.Disposable[] {
-  console.log('Setting up Unused Symbols view');
-
   // Initialize the unused symbols provider
   const unusedSymbolsProvider = new UnusedSymbolsProvider();
 
@@ -30,8 +28,10 @@ function setupUnusedSymbolsView(): vscode.Disposable[] {
 
   // Register the command to refresh the unused symbols view
   const refreshCommand = vscode.commands.registerCommand(REFRESH_UNUSED_SYMBOLS_COMMAND_ID, async () => {
-    // Scan for workspace symbols and identify unused ones
+    console.log('Refreshing unused symbols view...');
+    // Clear the workspace symbols to force a fresh scan
     await workspaceSymbolManager.getWorkspaceSymbols();
+    // Scan for unused symbols
     await workspaceSymbolManager.getUnusedSymbols();
     // Refresh the tree view to display the latest results
     unusedSymbolsProvider.refresh();
@@ -48,19 +48,15 @@ function setupUnusedSymbolsView(): vscode.Disposable[] {
  * @param context The extension context provided by VS Code.
  */
 function setupDecorationHandling(context: vscode.ExtensionContext) {
-  console.log('Setting up Decoration handling');
-
   // Apply decorations to the currently active editor, if any
   if (vscode.window.activeTextEditor) {
-    // updateDecorations handles debouncing internally, so no need to await
     fileRefCounter.updateDecorations(vscode.window.activeTextEditor);
   }
 
   // Register listener to update decorations when the active editor changes
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor) {
-        // updateDecorations handles debouncing internally
         fileRefCounter.updateDecorations(editor);
       }
     }),
@@ -73,29 +69,21 @@ function setupDecorationHandling(context: vscode.ExtensionContext) {
  * @param context The extension context provided by VS Code.
  */
 function setupFileSaveHandling(context: vscode.ExtensionContext) {
-  console.log('Setting up File Save handling');
-
   // Register listener for when a text document is saved
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(async (document) => {
-
-      // Check if the saved file's extension is supported by the configuration
-      const fileExtension = document.uri.fsPath.split('.').pop()?.toLowerCase() || '';
-      const supportedExtensions = vscode.workspace.getConfiguration('referenceCounter').get<string[]>('fileExtensions', []);
-
-      if (supportedExtensions.includes(fileExtension)) {
+      // Check if the saved file is supported
+      if (configManager.isFileSupported(document.uri)) {
         // Update the symbols for the saved file in the workspace manager
         await workspaceSymbolManager.updateFileSymbols(document.uri);
 
         // If the saved document is the currently active editor, update its decorations
         if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document === document) {
-          // updateDecorations handles debouncing internally
           fileRefCounter.updateDecorations(vscode.window.activeTextEditor);
         }
 
         // Trigger a refresh of the unused symbols view only if the feature is enabled
-        const config = vscode.workspace.getConfiguration('referenceCounter');
-        if (config.get<boolean>('enableUnusedSymbols', true)) {
+        if (configManager.enableUnusedSymbols) {
           vscode.commands.executeCommand(REFRESH_UNUSED_SYMBOLS_COMMAND_ID);
         }
       }
@@ -110,52 +98,57 @@ function setupFileSaveHandling(context: vscode.ExtensionContext) {
  * @param context The extension context provided by VS Code.
  */
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('Activating Reference Counter extension');
-
+  // Track disposables for the unused symbols feature
   let unusedSymbolsDisposables: vscode.Disposable[] | null = null;
 
   /** Helper function to enable the unused symbols feature */
   const enableUnusedSymbolsFeature = () => {
     if (unusedSymbolsDisposables === null) {
-      console.log('Enabling Unused Symbols feature');
       unusedSymbolsDisposables = setupUnusedSymbolsView();
       context.subscriptions.push(...unusedSymbolsDisposables);
-      // Perform an initial scan after a short delay
-      setTimeout(() => {
-        vscode.commands.executeCommand(REFRESH_UNUSED_SYMBOLS_COMMAND_ID);
-      }, 1000); // 1-second delay
+
+      // Perform an initial scan after a short delay to allow language servers to initialize
+      setTimeout(async () => {
+        console.log('Performing initial scan for unused symbols...');
+        try {
+          // First clear and rebuild the workspace symbols
+          await workspaceSymbolManager.getWorkspaceSymbols();
+          // Then scan for unused symbols
+          await workspaceSymbolManager.getUnusedSymbols();
+          // Finally refresh the view
+          vscode.commands.executeCommand(REFRESH_UNUSED_SYMBOLS_COMMAND_ID);
+        } catch (error) {
+          console.error('Error during initial unused symbols scan:', error);
+        }
+      }, 3000); // Increased delay to 3 seconds
     }
   };
 
   /** Helper function to disable the unused symbols feature */
   const disableUnusedSymbolsFeature = () => {
     if (unusedSymbolsDisposables !== null) {
-      console.log('Disabling Unused Symbols feature');
       // Dispose each disposable
       unusedSymbolsDisposables.forEach(d => d.dispose());
-      // Clear the array - Note: Disposables pushed to context.subscriptions are managed there.
-      // Disposing them here is sufficient. We set to null to track state.
       unusedSymbolsDisposables = null;
     }
   };
 
-  // Initial setup based on configuration
-  const initialConfig = vscode.workspace.getConfiguration('referenceCounter');
-  if (initialConfig.get<boolean>('enableUnusedSymbols', true)) {
+  // Setup core features
+  setupDecorationHandling(context);
+  setupFileSaveHandling(context);
+
+  // Initial setup of unused symbols feature based on configuration
+  if (configManager.enableUnusedSymbols) {
     enableUnusedSymbolsFeature();
   }
-
-  // Setup other features (these are always active)
-  setupDecorationHandling(context);
-  setupFileSaveHandling(context); // Refined: Now only triggers refresh if view is enabled.
 
   // Listen for configuration changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('referenceCounter.enableUnusedSymbols')) {
-        const config = vscode.workspace.getConfiguration('referenceCounter');
-        const enabled = config.get<boolean>('enableUnusedSymbols', true);
-        if (enabled) {
+        configManager.refresh();
+
+        if (configManager.enableUnusedSymbols) {
           enableUnusedSymbolsFeature();
         } else {
           disableUnusedSymbolsFeature();
@@ -167,15 +160,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 /**
  * This method is called when the extension is deactivated.
- * It cleans up resources used by the extension, such as disposables
- * and timeouts related to decorations.
+ * It cleans up resources used by the extension.
  */
 export function deactivate() {
-  console.log('Deactivating Reference Counter extension');
   // Dispose of the decoration type if it exists
   if (fileRefCounter.decorationType) {
     fileRefCounter.decorationType.dispose();
   }
+
   // Clear any pending decoration update timeout
   if (fileRefCounter.decorationUpdateTimeout) {
     clearTimeout(fileRefCounter.decorationUpdateTimeout);

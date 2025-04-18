@@ -1,129 +1,131 @@
 import * as vscode from 'vscode';
 import { SymbolManagerClass } from './symbolManager';
 import { decorateFile } from './decorateFile';
-import { filterReferences, categorizeReferences } from './utils/utils';
+import { configManager } from './config';
+import { calculateReferenceCount, getSymbolReferences } from './utils/symbolUtils';
+
+/**
+ * Handles reference counting and decoration for the active file
+ */
 class FileRefCounterClass extends SymbolManagerClass {
-    public activeFileSymbolReferences: Map<string, vscode.Location[]> = new Map();
-    public excludePatterns: string[] = [];
-    public config: vscode.WorkspaceConfiguration;
-    public minimalisticDecorations: boolean;
+    // Decoration properties
     public decorationType: vscode.TextEditorDecorationType;
-    public includeImports: boolean;
-    public fileExtensions: string[];
     public decorationUpdateTimeout: NodeJS.Timeout | undefined;
     private readonly DEBOUNCE_DELAY = 500; // ms
+
     constructor() {
         super();
-        this.activeFileSymbolReferences = new Map();
-        this.config = vscode.workspace.getConfiguration('referenceCounter');
-        this.fileExtensions = this.config.get<string[]>('fileExtensions') || [];
-        this.excludePatterns = this.config.get<string[]>('excludePatterns') || [];
-        this.minimalisticDecorations = this.config.get<boolean>('minimalisticDecorations') || false;
-        this.includeImports = this.config.get<boolean>('includeImports') || false;
+
+        // Create decoration type based on configuration
         this.decorationType = vscode.window.createTextEditorDecorationType({
             after: {
-                margin: this.minimalisticDecorations ? '0' : '0 0 0 0.5em',
+                margin: configManager.minimalisticDecorations ? '0' : '0 0 0 0.5em',
                 textDecoration: 'none',
             },
         });
     }
-   public isActiveFileSupported() {
-    const fileExtension = vscode.window.activeTextEditor?.document.uri.path.split('.').pop()?.toLowerCase() || '';
-    return this.fileExtensions.includes(fileExtension);
-   }
-   // --- Decoration Logic ---
 
-   public async updateDecorations(editor: vscode.TextEditor) {
-     // Clear any pending update
-     if (this.decorationUpdateTimeout) {
-       clearTimeout(this.decorationUpdateTimeout);
-     }
+    /**
+     * Check if the active file is supported for reference counting
+     */
+    public isActiveFileSupported(): boolean {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (!activeEditor) return false;
 
-     // Schedule new update with debouncing
-     this.decorationUpdateTimeout = setTimeout(async () => {
-       await this.performDecorationsUpdate(editor);
-     }, this.DEBOUNCE_DELAY);
-   }
+        return configManager.isFileSupported(activeEditor.document.uri);
+    }
 
-   private async performDecorationsUpdate(editor: vscode.TextEditor) {
-     try {
-       if (!this.isActiveFileSupported()) {
-         return;
-       }
-       // Use inherited method
-       await this.getAndSetSymbolsForActiveFile(editor.document.uri);
-       // Use inherited property
-       if (!this.activeFileSymbolStore) {
-         return;
-       }
+    /**
+     * Update decorations for the editor with debouncing
+     */
+    public async updateDecorations(editor: vscode.TextEditor): Promise<void> {
+        // Clear any pending update
+        if (this.decorationUpdateTimeout) {
+            clearTimeout(this.decorationUpdateTimeout);
+        }
 
-       await this.processSymbols(editor);
+        // Schedule new update with debouncing
+        this.decorationUpdateTimeout = setTimeout(async () => {
+            await this.performDecorationsUpdate(editor);
+        }, this.DEBOUNCE_DELAY);
+    }
 
-     } catch (error) {
-       console.error('Error in performDecorationsUpdate:', error);
-       // Don't rethrow - we want to silently fail for binary files
-     }
-   }
+    /**
+     * Perform the actual decoration update
+     */
+    private async performDecorationsUpdate(editor: vscode.TextEditor): Promise<void> {
+        try {
+            if (!this.isActiveFileSupported()) {
+                return;
+            }
 
-   private async processSymbols(editor: vscode.TextEditor) {
-     try {
-       // Use inherited method & property
-       await this.getAndSetSymbolsForActiveFile(editor.document.uri);
-       const { activeFileSymbolStore } = this;
+            // Get symbols for the active file
+            await this.getAndSetSymbolsForActiveFile(editor.document.uri);
 
-       const decorations = await Promise.all(
-         Array.from(activeFileSymbolStore.values()).map(symbol =>
-           this.processSymbol(editor, symbol)
-         )
-       );
+            // If no symbols were found, exit early
+            if (this.activeFileSymbolStore.size === 0) {
+                return;
+            }
 
-       editor.setDecorations(this.decorationType, decorations.filter(Boolean));
-     } catch (error) {
-       console.error('Error processing symbols:', error);
-     }
-   }
+            // Create decorations for each symbol
+            const decorations = await this.createDecorations(editor);
 
-   private async processSymbol(
-     _editor: vscode.TextEditor,
-     symbol: vscode.DocumentSymbol,
-   ): Promise<vscode.DecorationOptions | null> {
-     try {
-       const references = await this.getSymbolReferences(symbol);
+            // Apply decorations to the editor
+            editor.setDecorations(this.decorationType, decorations);
+        } catch (error) {
+            console.error('Error in performDecorationsUpdate:', error);
+            // Don't rethrow - we want to silently fail for binary files
+        }
+    }
 
-       if (references.length === 0) return null;
+    /**
+     * Create decorations for all symbols in the active file
+     */
+    private async createDecorations(editor: vscode.TextEditor): Promise<vscode.DecorationOptions[]> {
+        try {
+            // Process each symbol and create a decoration
+            const decorationPromises = Array.from(this.activeFileSymbolStore.values())
+                .map(symbol => this.createDecorationForSymbol(editor.document.uri, symbol));
 
-       const filteredReferences = filterReferences(references, this.excludePatterns);
-       const { usageReferences } = await categorizeReferences(filteredReferences);
+            // Wait for all decorations to be created
+            const decorations = await Promise.all(decorationPromises);
 
-       // Calculate reference count based on our settings
-       let referenceCount: number;
+            // Filter out null decorations
+            return decorations.filter(Boolean) as vscode.DecorationOptions[];
+        } catch (error) {
+            console.error('Error creating decorations:', error);
+            return [];
+        }
+    }
 
-       if (this.includeImports) {
-         referenceCount = filteredReferences.length;
-       } else {
-         referenceCount = usageReferences.length;
-       }
+    /**
+     * Create a decoration for a single symbol
+     */
+    private async createDecorationForSymbol(
+        documentUri: vscode.Uri,
+        symbol: vscode.DocumentSymbol
+    ): Promise<vscode.DecorationOptions | null> {
+        try {
+            // Get references for this symbol
+            const references = await getSymbolReferences(documentUri, symbol);
+            if (references.length === 0) return null;
 
-       // Check if any reference is in the same range as the symbol
-       const symbolRange = symbol.range;
-       const selfReferenceCount = references.filter(ref => 
-         ref.range.start.line === symbolRange.start.line 
-       ).length;
+            // Calculate reference count
+            const referenceCount = await calculateReferenceCount(
+                references,
+                configManager.excludePatterns,
+                configManager.includeImports,
+                symbol.range
+            );
 
-       // Deduct self-references from the count
-       if (selfReferenceCount > 0) {
-        const adjustedReferenceCount = referenceCount - selfReferenceCount;
-        referenceCount = Math.max(0, adjustedReferenceCount);
-       }
+            // Create decoration
+            return decorateFile(referenceCount, symbol.range.start, configManager.minimalisticDecorations);
+        } catch (error) {
+            console.error(`Error creating decoration for symbol ${symbol.name}:`, error);
+            return null;
+        }
+    }
+}
 
-       return decorateFile(referenceCount, symbol.range.start, this.minimalisticDecorations);
-     } catch (error) {
-       console.error('Error processing single symbol:', error);
-       return null;
-     }
-   }
-
- }
-
-
+// Export a singleton instance
 export const fileRefCounter = new FileRefCounterClass();
