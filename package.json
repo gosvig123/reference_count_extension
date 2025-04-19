@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "icon": "icon.png",
   "engines": {
     "vscode": "1.96.2"
@@ -48,10 +48,10 @@
   "contributes": {
     "commands": [
       {
-        "command": "referenceCounter.refreshUnusedSymbols",
-        "title": "Refresh Unused Symbols",
+        "command": "referenceCounter.findUnusedSymbols",
+        "title": "Find Unused Symbols",
         "category": "Reference Counter",
-        "icon": "$(refresh)"
+        "icon": "$(search)"
       }
     ],
     "views": {
@@ -65,7 +65,7 @@
     "menus": {
       "view/title": [
         {
-          "command": "referenceCounter.refreshUnusedSymbols",
+          "command": "referenceCounter.findUnusedSymbols",
           "when": "view == referenceCounter.unusedSymbols",
           "group": "navigation"
         }

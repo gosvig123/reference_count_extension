@@ -8,6 +8,7 @@ import {
     getSupportedFiles,
     isPositionInRange
 } from './utils/symbolUtils';
+import { ProgressReporter } from './utils/progressUtils';
 
 /**
  * Interface for unused symbol information
@@ -25,33 +26,48 @@ class WorkspaceSymbolManager {
     // Map to store all symbols in the workspace
     private workspaceSymbols: Map<string, { symbol: vscode.DocumentSymbol, uri: vscode.Uri }> = new Map();
 
-    /**
-     * Get all symbols in the workspace
-     */
-    public async getWorkspaceSymbols(): Promise<Map<string, { symbol: vscode.DocumentSymbol, uri: vscode.Uri }>> {
-        console.log('Getting all workspace symbols...');
+    // Cache for reference counts to avoid duplicate calculations
+    private referenceCountCache: Map<string, number> = new Map();
 
+    /**
+     * Get all symbols in the workspace with progress reporting
+     */
+    public async getWorkspaceSymbols(reporter?: ProgressReporter): Promise<Map<string, { symbol: vscode.DocumentSymbol, uri: vscode.Uri }>> {
         try {
             // Get all supported files in the workspace
             const workspaceFiles = await getSupportedFiles(
                 configManager.getSupportedFilesPattern(),
                 configManager.getExcludePattern()
             );
-            console.log(`Found ${workspaceFiles.length} supported files in workspace`);
 
-            // Clear previous symbols
+            // Update total items if we have a reporter
+            if (reporter) {
+                reporter.setTotalItems(workspaceFiles.length);
+            }
+
+            // Clear previous symbols and cache
             this.workspaceSymbols.clear();
+            this.referenceCountCache.clear();
 
             // Process each file to collect symbols
             for (const fileUri of workspaceFiles) {
+                // Check for cancellation
+                if (reporter?.isCancelled()) {
+                    break;
+                }
+
                 try {
                     await this.processFile(fileUri);
+
+                    // Report progress
+                    if (reporter) {
+                        reporter.report(`Processed ${fileUri.path.split('/').pop()}`);
+                    }
                 } catch (error) {
                     console.error(`Error processing file ${fileUri.fsPath}:`, error);
                 }
             }
 
-            console.log(`Collected symbols from ${this.workspaceSymbols.size} locations in the workspace`);
             return this.workspaceSymbols;
         } catch (error) {
             console.error('Error getting workspace symbols:', error);
@@ -60,63 +76,78 @@ class WorkspaceSymbolManager {
     }
 
     /**
-     * Get unused symbols in the workspace
+     * Get unused symbols in the workspace with progress reporting
      */
-    public async getUnusedSymbols(): Promise<UnusedSymbolInfo[]> {
-        console.log('Getting unused symbols...');
-
+    public async getUnusedSymbols(reporter?: ProgressReporter): Promise<UnusedSymbolInfo[]> {
         // Make sure we have the latest symbols
         if (this.workspaceSymbols.size === 0) {
-            console.log('No symbols in cache, fetching workspace symbols...');
-            await this.getWorkspaceSymbols();
-            console.log(`Fetched ${this.workspaceSymbols.size} symbols from workspace`);
+            // If we don't have a reporter, create one for the symbol collection phase
+            await this.getWorkspaceSymbols(reporter);
         }
 
         const unusedSymbols: UnusedSymbolInfo[] = [];
+        const symbolEntries = Array.from(this.workspaceSymbols.entries());
+
+        // Update total items if we have a reporter
+        if (reporter) {
+            reporter.setTotalItems(symbolEntries.length);
+        }
 
         // Check each symbol for references
-        for (const [_, symbolInfo] of this.workspaceSymbols) {
+        for (let i = 0; i < symbolEntries.length; i++) {
+            // Check for cancellation
+            if (reporter?.isCancelled()) {
+                break;
+            }
+
+            const [key, symbolInfo] = symbolEntries[i];
             const { symbol, uri } = symbolInfo;
 
             // Skip symbols without selectionRange (should not happen, but just in case)
             if (!symbol.selectionRange) {
-                console.log(`Symbol ${symbol.name} has no selectionRange, skipping`);
                 continue;
             }
 
             try {
-                // Get all references including declaration
-                const allReferences = await getSymbolReferences(uri, symbol, true) || [];
-                console.log(`Symbol ${symbol.name} has ${allReferences.length} total references`);
+                // Check if we already have a cached reference count
+                if (!this.referenceCountCache.has(key)) {
+                    // Get all references including declaration
+                    const allReferences = await getSymbolReferences(uri, symbol, true) || [];
 
-                // Filter out the declaration itself
-                const nonDeclarationRefs = allReferences.filter(ref => {
-                    // Check if this reference is the declaration itself
-                    const isDeclaration = ref.uri.fsPath === uri.fsPath &&
-                        isPositionInRange(ref.range.start, symbol.range);
-                    return !isDeclaration;
-                });
-                console.log(`Symbol ${symbol.name} has ${nonDeclarationRefs.length} non-declaration references`);
+                    // Filter out the declaration itself
+                    const nonDeclarationRefs = allReferences.filter(ref => {
+                        // Check if this reference is the declaration itself
+                        const isDeclaration = ref.uri.fsPath === uri.fsPath &&
+                            isPositionInRange(ref.range.start, symbol.range);
+                        return !isDeclaration;
+                    });
 
-                // Calculate reference count
-                const referenceCount = await this.calculateEffectiveReferenceCount(
-                    nonDeclarationRefs,
-                    symbol,
-                    uri
-                );
-                console.log(`Symbol ${symbol.name} has effective reference count: ${referenceCount}`);
+                    // Calculate reference count and cache it
+                    const referenceCount = await this.calculateEffectiveReferenceCount(
+                        nonDeclarationRefs,
+                        symbol,
+                        uri
+                    );
+                    this.referenceCountCache.set(key, referenceCount);
+                }
+
+                // Get the reference count from cache
+                const referenceCount = this.referenceCountCache.get(key) || 0;
 
                 // If no references, it's unused
                 if (referenceCount <= 0) {
-                    console.log(`Adding ${symbol.name} to unused symbols list`);
                     unusedSymbols.push({ symbol, uri });
+                }
+
+                // Report progress
+                if (reporter) {
+                    reporter.report(`Analyzing ${symbol.name}`);
                 }
             } catch (error) {
                 console.error(`Error analyzing symbol ${symbol.name}:`, error);
             }
         }
 
-        console.log(`Found ${unusedSymbols.length} unused symbols out of ${this.workspaceSymbols.size} total symbols`);
         return unusedSymbols;
     }
 
@@ -154,14 +185,11 @@ class WorkspaceSymbolManager {
      * Process a single file to extract symbols
      */
     private async processFile(fileUri: vscode.Uri): Promise<void> {
-        console.log(`Processing file: ${fileUri.fsPath}`);
-
         try {
             // Try to open the document first to ensure it's loaded
             try {
                 await vscode.workspace.openTextDocument(fileUri);
             } catch (docError) {
-                console.warn(`Could not open document ${fileUri.fsPath}:`, docError);
                 // Continue anyway, as getDocumentSymbols might still work
             }
 
@@ -169,16 +197,11 @@ class WorkspaceSymbolManager {
             const symbols = await getDocumentSymbols(fileUri);
 
             if (symbols.length === 0) {
-                console.log(`No symbols found in ${fileUri.fsPath}`);
                 return;
             }
 
             // Collect symbols and add them to the workspace symbols map
-            const initialSize = this.workspaceSymbols.size;
             collectSymbols(symbols, fileUri, this.workspaceSymbols);
-            const newSymbols = this.workspaceSymbols.size - initialSize;
-
-            console.log(`Added ${newSymbols} symbols from ${fileUri.fsPath}`);
         } catch (error) {
             console.error(`Error processing file ${fileUri.fsPath}:`, error);
         }

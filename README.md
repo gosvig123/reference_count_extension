@@ -39,7 +39,7 @@
 
 ### New in Latest Version
 
-- **Unused Symbols Explorer**: New dedicated view in the Explorer sidebar to find unused code
+- **Unused Symbols Explorer**: Dedicated view in the Explorer sidebar with on-demand scanning
 - **Performance Improvements**: Automatically excludes node_modules, .next, dist, and other build folders
 - **Improved Symbol Detection**: Better handling of nested symbols and class methods
 - **Enhanced Logging**: More detailed logging for easier troubleshooting
@@ -48,8 +48,9 @@
 
 1. Open any supported file in your workspace
 2. Reference counts will automatically appear next to functions, classes, and methods
-3. Open the "Unused Symbols" view in the Explorer sidebar to see unused code
-4. Click on any unused symbol to navigate directly to its location
+3. Open the "Unused Symbols" view in the Explorer sidebar
+4. Click the "Find Unused Symbols" button (or run the command from the command palette) to scan your workspace
+5. Click on any unused symbol to navigate directly to its location
 
 ## Configuration
 
@@ -68,7 +69,10 @@ Customize the extension through VS Code settings:
   "referenceCounter.includeImports": false,
 
   // Use a more compact display for reference counts
-  "referenceCounter.minimalisticDecorations": true
+  "referenceCounter.minimalisticDecorations": true,
+
+  // Enable or disable the Unused Symbols view
+  "referenceCounter.enableUnusedSymbols": true
 }
 ```
 

@@ -15,14 +15,12 @@ export const SUPPORTED_SYMBOL_KINDS = [
  */
 export async function getDocumentSymbols(documentUri: vscode.Uri): Promise<vscode.DocumentSymbol[]> {
     try {
-        console.log(`Getting symbols for document: ${documentUri.fsPath}`);
-
         // Try to ensure the document is loaded
         try {
             await vscode.workspace.openTextDocument(documentUri);
             // Just opening it is enough to ensure it's loaded for the symbol provider
         } catch (docError) {
-            console.warn(`Could not open document ${documentUri.fsPath}, will try to get symbols anyway`);
+            // Continue anyway
         }
 
         // Try up to 3 times with a small delay between attempts
@@ -42,13 +40,11 @@ export async function getDocumentSymbols(documentUri: vscode.Uri): Promise<vscod
 
                 if (!Array.isArray(symbols) || symbols.length === 0) {
                     if (attempts < maxAttempts) {
-                        console.log(`No symbols found for ${documentUri.fsPath} on attempt ${attempts}, retrying...`);
                         // Wait a bit before trying again
                         await new Promise(resolve => setTimeout(resolve, 300));
                     }
                 }
             } catch (symbolError) {
-                console.error(`Error getting symbols on attempt ${attempts}:`, symbolError);
                 if (attempts < maxAttempts) {
                     // Wait a bit before trying again
                     await new Promise(resolve => setTimeout(resolve, 300));
@@ -57,11 +53,9 @@ export async function getDocumentSymbols(documentUri: vscode.Uri): Promise<vscod
         }
 
         if (!Array.isArray(symbols) || symbols.length === 0) {
-            console.log(`No symbols found for ${documentUri.fsPath} after ${attempts} attempts`);
             return [];
         }
 
-        console.log(`Found ${symbols.length} top-level symbols in ${documentUri.fsPath} on attempt ${attempts}`);
         return symbols;
     } catch (error) {
         console.error(`Error getting symbols for ${documentUri.fsPath}:`, error);
@@ -103,8 +97,6 @@ export function collectSymbols(
     symbolMap: Map<string, { symbol: vscode.DocumentSymbol, uri: vscode.Uri }> = new Map(),
     isRecursiveCall: boolean = false
 ): Map<string, { symbol: vscode.DocumentSymbol, uri: vscode.Uri }> {
-    let count = 0;
-
     symbolList.forEach(symbol => {
         // Only store supported symbol kinds
         if (SUPPORTED_SYMBOL_KINDS.includes(symbol.kind)) {
@@ -114,23 +106,14 @@ export function collectSymbols(
             // Check if we already have this symbol to avoid duplicates
             if (!symbolMap.has(key)) {
                 symbolMap.set(key, { symbol, uri });
-                count++;
             }
         }
 
         // If it's a class with children, recurse (only process children of classes)
         if (symbol.kind === vscode.SymbolKind.Class && symbol.children && symbol.children.length > 0) {
-            const sizeBefore = symbolMap.size;
             collectSymbols(symbol.children, uri, symbolMap, true);
-            const childCount = symbolMap.size - sizeBefore;
-            count += childCount;
         }
     });
-
-    // Only log at the top level to avoid duplicate logs
-    if (!isRecursiveCall) {
-        console.log(`Collected ${count} symbols from ${uri.fsPath}`);
-    }
 
     return symbolMap;
 }

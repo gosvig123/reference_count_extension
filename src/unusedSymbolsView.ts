@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { workspaceSymbolManager } from './workspaceSymbolManager';
+import { workspaceSymbolManager, UnusedSymbolInfo } from './workspaceSymbolManager';
 
 // Tree item to represent an unused symbol
 export class UnusedSymbolItem extends vscode.TreeItem {
@@ -56,11 +56,32 @@ export class UnusedSymbolsProvider implements vscode.TreeDataProvider<UnusedSymb
   }
 
   /**
-   * Refresh the tree view
+   * Refresh the tree view with provided unused symbols
+   * If no symbols are provided, the view will be refreshed with empty cache
    */
-  refresh(): void {
-    console.log('Refreshing unused symbols tree view');
-    this.cachedItems = []; // Clear cache
+  refresh(unusedSymbols?: UnusedSymbolInfo[]): void {
+    this.isLoading = false;
+
+    if (unusedSymbols) {
+      // If we have symbols, create tree items for them
+      if (unusedSymbols.length === 0) {
+        this.cachedItems = [this.createNoUnusedSymbolsItem()];
+      } else {
+        this.cachedItems = unusedSymbols.map(item => {
+          return new UnusedSymbolItem(
+            item.symbol.name,
+            vscode.TreeItemCollapsibleState.None,
+            item.symbol,
+            item.uri
+          );
+        });
+      }
+    } else {
+      // If no symbols provided, just clear the cache
+      this.cachedItems = [];
+    }
+
+    // Notify the tree view to refresh
     this._onDidChangeTreeData.fire();
   }
 
@@ -79,50 +100,18 @@ export class UnusedSymbolsProvider implements vscode.TreeDataProvider<UnusedSymb
 
     // If we're already loading, show the loading indicator
     if (this.isLoading) {
-      console.log('Already loading, showing loading indicator');
       return [this.createLoadingItem()];
     }
 
     // Use cached items if available
     if (this.cachedItems.length > 0) {
-      console.log(`Returning ${this.cachedItems.length} cached items`);
       return this.cachedItems;
     }
 
-    try {
-      // Set loading state
-      this.isLoading = true;
-      console.log('Fetching unused symbols from workspace manager...');
-
-      // Get unused symbols from the workspace symbol manager
-      const unusedSymbols = await workspaceSymbolManager.getUnusedSymbols();
-      console.log(`Tree view received ${unusedSymbols.length} unused symbols`);
-
-      // If no unused symbols, show a message
-      if (!unusedSymbols || unusedSymbols.length === 0) {
-        console.log('No unused symbols found, showing message');
-        this.cachedItems = [this.createNoUnusedSymbolsItem()];
-        return this.cachedItems;
-      }
-
-      // Create tree items for each unused symbol
-      this.cachedItems = unusedSymbols.map(item => {
-        return new UnusedSymbolItem(
-          item.symbol.name,
-          vscode.TreeItemCollapsibleState.None,
-          item.symbol,
-          item.uri
-        );
-      });
-
-      console.log(`Created ${this.cachedItems.length} tree items for unused symbols`);
-      return this.cachedItems;
-    } catch (error) {
-      console.error('Error getting unused symbols:', error);
-      return [this.createErrorItem()];
-    } finally {
-      this.isLoading = false;
-    }
+    // If we get here, we need to show a loading indicator
+    // The actual loading is triggered by the command, not by the tree view
+    this.isLoading = true;
+    return [this.createLoadingItem()];
   }
 
   private createLoadingItem(): UnusedSymbolItem {

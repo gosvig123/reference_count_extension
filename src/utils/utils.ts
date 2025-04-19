@@ -11,7 +11,7 @@ export function filterReferences(
 
   return references.filter(reference => {
     const refPath = reference.uri.fsPath; // Use fsPath instead of path for consistent formatting
-    
+
     // Only exclude if the path matches one of the exclude patterns exactly
     return !excludePatterns.some(pattern => {
       const regexPattern = pattern.replace(/\*/g, '[^/]*');  // More precise wildcard handling
@@ -56,8 +56,12 @@ export async function isImportReference(reference: vscode.Location): Promise<boo
   }
 }
 
+// Cache for import references to avoid repeated document loading
+const importReferenceCache = new Map<string, boolean>();
+
 /**
  * Separates references into import references and usage references
+ * Uses caching to improve performance
  *
  * @param references Array of references to analyze
  * @returns Object containing arrays of import and usage references
@@ -69,11 +73,33 @@ export async function categorizeReferences(references: vscode.Location[]): Promi
   const importReferences: vscode.Location[] = [];
   const usageReferences: vscode.Location[] = [];
 
-  for (const reference of references) {
-    if (await isImportReference(reference)) {
-      importReferences.push(reference);
-    } else {
-      usageReferences.push(reference);
+  // Process references in batches to improve performance
+  const batchSize = 10;
+  for (let i = 0; i < references.length; i += batchSize) {
+    const batch = references.slice(i, i + batchSize);
+
+    // Process batch in parallel
+    const results = await Promise.all(
+      batch.map(async (reference) => {
+        const cacheKey = `${reference.uri.fsPath}:${reference.range.start.line}:${reference.range.start.character}`;
+
+        // Check cache first
+        if (!importReferenceCache.has(cacheKey)) {
+          const isImport = await isImportReference(reference);
+          importReferenceCache.set(cacheKey, isImport);
+        }
+
+        return { reference, isImport: importReferenceCache.get(cacheKey) };
+      })
+    );
+
+    // Sort results into appropriate arrays
+    for (const { reference, isImport } of results) {
+      if (isImport) {
+        importReferences.push(reference);
+      } else {
+        usageReferences.push(reference);
+      }
     }
   }
 

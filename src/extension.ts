@@ -3,9 +3,10 @@ import { fileRefCounter } from './fileRefCounter';
 import { workspaceSymbolManager } from './workspaceSymbolManager';
 import { UnusedSymbolsProvider } from './unusedSymbolsView';
 import { configManager } from './config';
+import { withProgress } from './utils/progressUtils';
 
 // Constants for IDs used within the extension
-const REFRESH_UNUSED_SYMBOLS_COMMAND_ID = 'referenceCounter.refreshUnusedSymbols';
+const FIND_UNUSED_SYMBOLS_COMMAND_ID = 'referenceCounter.findUnusedSymbols';
 const UNUSED_SYMBOLS_VIEW_ID = 'referenceCounter.unusedSymbols';
 
 /**
@@ -26,17 +27,33 @@ function setupUnusedSymbolsView(): vscode.Disposable[] {
   const disposables: vscode.Disposable[] = [];
   disposables.push(unusedSymbolsView);
 
-  // Register the command to refresh the unused symbols view
-  const refreshCommand = vscode.commands.registerCommand(REFRESH_UNUSED_SYMBOLS_COMMAND_ID, async () => {
-    console.log('Refreshing unused symbols view...');
-    // Clear the workspace symbols to force a fresh scan
-    await workspaceSymbolManager.getWorkspaceSymbols();
-    // Scan for unused symbols
-    await workspaceSymbolManager.getUnusedSymbols();
-    // Refresh the tree view to display the latest results
-    unusedSymbolsProvider.refresh();
+  // Register the command to find unused symbols
+  const findUnusedSymbolsCommand = vscode.commands.registerCommand(FIND_UNUSED_SYMBOLS_COMMAND_ID, async () => {
+    // Use our enhanced progress reporting
+    await withProgress(
+      'Scanning for unused symbols',
+      100, // Initial estimate, will be updated during scan
+      async (reporter) => {
+        // First phase: Collect all symbols from the workspace
+        await workspaceSymbolManager.getWorkspaceSymbols(reporter);
+
+        // Second phase: Analyze symbols for references
+        const unusedSymbols = await workspaceSymbolManager.getUnusedSymbols(reporter);
+
+        // Refresh the tree view with the results
+        unusedSymbolsProvider.refresh(unusedSymbols);
+
+        // Show a status message with the results
+        vscode.window.setStatusBarMessage(
+          `Found ${unusedSymbols.length} unused symbols`,
+          5000
+        );
+
+        return unusedSymbols;
+      }
+    );
   });
-  disposables.push(refreshCommand);
+  disposables.push(findUnusedSymbolsCommand);
 
   return disposables;
 }
@@ -64,8 +81,8 @@ function setupDecorationHandling(context: vscode.ExtensionContext) {
 }
 
 /**
- * Sets up the listener for file save events to trigger symbol updates,
- * decoration updates, and unused symbols view refresh.
+ * Sets up the listener for file save events to trigger symbol updates
+ * and decoration updates.
  * @param context The extension context provided by VS Code.
  */
 function setupFileSaveHandling(context: vscode.ExtensionContext) {
@@ -82,10 +99,8 @@ function setupFileSaveHandling(context: vscode.ExtensionContext) {
           fileRefCounter.updateDecorations(vscode.window.activeTextEditor);
         }
 
-        // Trigger a refresh of the unused symbols view only if the feature is enabled
-        if (configManager.enableUnusedSymbols) {
-          vscode.commands.executeCommand(REFRESH_UNUSED_SYMBOLS_COMMAND_ID);
-        }
+        // Note: We no longer automatically refresh the unused symbols view here
+        // The user must manually run the command to refresh the view
       }
     })
   );
@@ -107,20 +122,8 @@ export async function activate(context: vscode.ExtensionContext) {
       unusedSymbolsDisposables = setupUnusedSymbolsView();
       context.subscriptions.push(...unusedSymbolsDisposables);
 
-      // Perform an initial scan after a short delay to allow language servers to initialize
-      setTimeout(async () => {
-        console.log('Performing initial scan for unused symbols...');
-        try {
-          // First clear and rebuild the workspace symbols
-          await workspaceSymbolManager.getWorkspaceSymbols();
-          // Then scan for unused symbols
-          await workspaceSymbolManager.getUnusedSymbols();
-          // Finally refresh the view
-          vscode.commands.executeCommand(REFRESH_UNUSED_SYMBOLS_COMMAND_ID);
-        } catch (error) {
-          console.error('Error during initial unused symbols scan:', error);
-        }
-      }, 3000); // Increased delay to 3 seconds
+      // No longer performing an automatic initial scan
+      // The user must manually run the command to scan for unused symbols
     }
   };
 
