@@ -57,6 +57,12 @@
     "bufferutil": "^4.0.1"
   },
   "contributes": {
+    "commands": [
+      {
+        "command": "referenceCounter.searchWorkspace",
+        "title": "Reference Counter: Search Workspace"
+      }
+    ],
     "configuration": {
       "title": "Reference Counter",
       "properties": {

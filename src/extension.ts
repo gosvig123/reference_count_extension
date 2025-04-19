@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import { updateRefCountsInActiveFile } from './updateRefCountsInActiveFile';
-
+import { getWorkspaceSymbols } from './symbols';
+import { getReferencesForSymbol } from './references';
+import { getReferencedFiles } from './utils';
+import { searchWorkspace } from './workspaceSearch';
 export let decorationType: vscode.TextEditorDecorationType;
 
 // Add debounce function to prevent too-frequent updates
@@ -8,7 +11,11 @@ let decorationUpdateTimeout: NodeJS.Timeout | undefined;
 const DEBOUNCE_DELAY = 500; // ms
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('Activating extension');
+  const searchWorkspaceCommand = vscode.commands.registerCommand('referenceCounter.searchWorkspace', async () => {
+    await searchWorkspace();
+  });
+
+  context.subscriptions.push(searchWorkspaceCommand);
 
   const config = vscode.workspace.getConfiguration('referenceCounter');
   const minimalisticDecorations = config.get<boolean>('minimalisticDecorations') || false;

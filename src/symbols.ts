@@ -25,3 +25,13 @@ export async function getSymbolsToProcessForFile(fileUri: vscode.Uri): Promise<v
 
   return symbolsToProcess;
 }
+
+export async function getWorkspaceSymbols(): Promise<vscode.DocumentSymbol[]> {
+  let workspaceSymbols = [];
+  const workspaceFiles = await vscode.workspace.findFiles('**/*.{ts,tsx,js,jsx,py}', '**/node_modules/**', 1000);
+  for (const file of workspaceFiles) {
+    const symbolsInFile = await getSymbolsForFile(file);
+    workspaceSymbols.push(...symbolsInFile);
+  }
+  return workspaceSymbols;
+}
