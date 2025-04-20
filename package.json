@@ -113,11 +113,6 @@
           "type": "boolean",
           "default": true,
           "description": "Use a minimalistic, compact version of the decorator."
-        },
-        "referenceCounter.enableUnusedSymbols": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable the 'Unused Symbols in workspace' view."
         }
       }
     }

@@ -116,49 +116,12 @@ export async function activate(context: vscode.ExtensionContext) {
   // Track disposables for the unused symbols feature
   let unusedSymbolsDisposables: vscode.Disposable[] | null = null;
 
-  /** Helper function to enable the unused symbols feature */
-  const enableUnusedSymbolsFeature = () => {
-    if (unusedSymbolsDisposables === null) {
-      unusedSymbolsDisposables = setupUnusedSymbolsView();
-      context.subscriptions.push(...unusedSymbolsDisposables);
-
-      // No longer performing an automatic initial scan
-      // The user must manually run the command to scan for unused symbols
-    }
-  };
-
-  /** Helper function to disable the unused symbols feature */
-  const disableUnusedSymbolsFeature = () => {
-    if (unusedSymbolsDisposables !== null) {
-      // Dispose each disposable
-      unusedSymbolsDisposables.forEach(d => d.dispose());
-      unusedSymbolsDisposables = null;
-    }
-  };
-
   // Setup core features
   setupDecorationHandling(context);
   setupFileSaveHandling(context);
 
-  // Initial setup of unused symbols feature based on configuration
-  if (configManager.enableUnusedSymbols) {
-    enableUnusedSymbolsFeature();
-  }
-
-  // Listen for configuration changes
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('referenceCounter.enableUnusedSymbols')) {
-        configManager.refresh();
-
-        if (configManager.enableUnusedSymbols) {
-          enableUnusedSymbolsFeature();
-        } else {
-          disableUnusedSymbolsFeature();
-        }
-      }
-    })
-  );
+  // Initial setup of unused symbols feature
+  setupUnusedSymbolsView();
 }
 
 /**
