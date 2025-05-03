@@ -14,57 +14,122 @@ export function filterReferences(
 
     // Only exclude if the path matches one of the exclude patterns exactly
     return !excludePatterns.some(pattern => {
-      const regexPattern = pattern.replace(/\*/g, '[^/]*');  // More precise wildcard handling
+      // Convert glob-like pattern to regex (basic support for *)
+      // Escapes regex characters and replaces * with [^/]*
+      const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape regex characters
+      const regexPattern = escapedPattern.replace(/\*/g, '[^/]*'); // Replace \* with [^/]*
       return new RegExp(`(^|/)${regexPattern}(/|$)`).test(refPath);
     });
   });
 }
 
+// Cache for the last import line number per file URI
+const lastImportLineCache = new Map<string, number>();
+
 /**
- * Determines if a reference is likely an import statement or an actual usage
- * This helps distinguish between imports and real code references
+ * Finds the line number of the last import/require statement in a document.
+ * Caches the result per file URI.
  *
- * @param reference The location to check
- * @returns True if the reference appears to be an import statement
+ * @param documentUri The URI of the document to analyze.
+ * @returns The 0-based line number of the last import, or -1 if none found or error.
  */
-export async function isImportReference(reference: vscode.Location): Promise<boolean> {
-  try {
-    // Get the document for this reference
-    const document = await vscode.workspace.openTextDocument(reference.uri);
+export async function findLastImportLine(documentUri: vscode.Uri): Promise<number> {
+  const filePath = documentUri.fsPath;
 
-    // Get the line text at the reference location
-    const lineText = document.lineAt(reference.range.start.line).text;
-
-    // Check common import patterns
-    const isImport = (
-      lineText.trim().startsWith('import ') ||
-      lineText.includes('from ') ||
-      lineText.includes('require(') ||
-      // For TypeScript/JavaScript
-      !!lineText.match(/import\s+{[^}]*}\s+from/) ||
-      // For Python
-      lineText.trim().startsWith('from ') ||
-      // For Java/C#
-      lineText.trim().startsWith('using ') ||
-      lineText.trim().startsWith('import ')
-    );
-
-    return isImport;
-  } catch (error) {
-    // Default to false if we can't determine
-    return false;
+  // Check cache first
+  if (lastImportLineCache.has(filePath)) {
+    return lastImportLineCache.get(filePath)!;
   }
+
+  let lastImportLine = -1;
+  try {
+    console.log(`[Debug] Analyzing ${filePath}...`); // Added Debug Log
+    const document = await vscode.workspace.openTextDocument(documentUri);
+    const text = document.getText();
+    const lines = text.split('\n');
+
+    let inMultiLineComment = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const originalLine = lines[i];
+      let line = originalLine.trim();
+
+      // Basic multi-line comment handling
+      if (inMultiLineComment) {
+        if (line.includes('*/')) {
+          inMultiLineComment = false;
+          line = line.substring(line.indexOf('*/') + 2).trim(); // Process rest of the line
+        } else {
+          continue; // Skip lines entirely within a multi-line comment
+        }
+      }
+      if (line.includes('/*')) {
+        if (line.includes('*/')) {
+          // Single-line multi-line comment (e.g., /* comment */ import ...;) - remove comment part
+           line = line.substring(0, line.indexOf('/*')) + line.substring(line.indexOf('*/') + 2);
+           line = line.trim();
+        } else {
+          inMultiLineComment = true;
+          line = line.substring(0, line.indexOf('/*')).trim(); // Process line before comment starts
+        }
+      }
+
+      // Remove single-line comments
+      if (line.includes('//')) {
+        line = line.substring(0, line.indexOf('//')).trim();
+      }
+
+      // console.log(`[Debug] Line ${i}: Processed: "${line}"`); // Uncomment for detailed line processing // Added Debug Log (Commented)
+
+      // Check for empty lines after comment removal
+      if (line === '') {
+        continue;
+      }
+
+      // Check common import/require patterns (Simplified Regex Check)
+      const potentialImportKeyword = line.match(/^\s*(import|require|using)/);
+      const isImport = !!potentialImportKeyword;
+
+
+      if (isImport) {
+        // console.log(`[Debug] Line ${i}: Matched import keyword. Updating lastImportLine to ${i}`); // Uncomment for match details // Added Debug Log (Commented)
+        lastImportLine = i; // Update last known import line
+      } else {
+        // Heuristic: If we encounter a line that's clearly not an import,
+        // and it's not empty or just a comment, assume the import block has ended.
+        // This helps avoid classifying code lines that happen to be after a gap
+        // following the last import as part of the import block.
+        // More sophisticated parsing (AST) would be better here.
+        if (lastImportLine !== -1) {
+          // If we already found *some* import, and this line is *not* an import,
+          // we can potentially stop searching earlier. But let's scan the whole file
+          // for simplicity and to catch imports potentially separated by comments/blank lines.
+          // For now, continue scanning the whole file.
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Error reading or parsing file ${filePath}: ${error}`);
+    lastImportLine = -1; // Reset on error
+  }
+
+  console.log(`[Debug] Finished analyzing ${filePath}. lastImportLine = ${lastImportLine}`); // Added Debug Log
+  // Store in cache (even if it's -1)
+  lastImportLineCache.set(filePath, lastImportLine);
+  return lastImportLine;
 }
 
-// Cache for import references to avoid repeated document loading
-const importReferenceCache = new Map<string, boolean>();
+
+// TODO: Add a mechanism to clear the lastImportLineCache when files change.
+// This could involve listening to vscode.workspace.onDidChangeTextDocument
+
 
 /**
- * Separates references into import references and usage references
- * Uses caching to improve performance
+ * Separates references into import references and usage references based on line number.
+ * Uses caching for the last import line determination.
  *
- * @param references Array of references to analyze
- * @returns Object containing arrays of import and usage references
+ * @param references Array of references to analyze.
+ * @returns Object containing arrays of import and usage references.
  */
 export async function categorizeReferences(references: vscode.Location[]): Promise<{
   importReferences: vscode.Location[];
@@ -73,33 +138,33 @@ export async function categorizeReferences(references: vscode.Location[]): Promi
   const importReferences: vscode.Location[] = [];
   const usageReferences: vscode.Location[] = [];
 
-  // Process references in batches to improve performance
-  const batchSize = 10;
-  for (let i = 0; i < references.length; i += batchSize) {
-    const batch = references.slice(i, i + batchSize);
+  // Map to store last import line per file *within this specific call*
+  // to avoid redundant lookups for the same file in a single batch.
+  const callScopedLastImportLines = new Map<string, number>();
 
-    // Process batch in parallel
-    const results = await Promise.all(
-      batch.map(async (reference) => {
-        const cacheKey = `${reference.uri.fsPath}:${reference.range.start.line}:${reference.range.start.character}`;
+  // Process references - can potentially still batch if performance dictates,
+  // but let's start simpler.
+  for (const reference of references) {
+    const fileUri = reference.uri;
+    const filePath = fileUri.fsPath;
+    let lastImportLine = -1;
 
-        // Check cache first
-        if (!importReferenceCache.has(cacheKey)) {
-          const isImport = await isImportReference(reference);
-          importReferenceCache.set(cacheKey, isImport);
-        }
+    // Check call-scoped cache first
+    if (callScopedLastImportLines.has(filePath)) {
+      lastImportLine = callScopedLastImportLines.get(filePath)!;
+    } else {
+      // If not in call-scoped cache, find (potentially using the module cache)
+      lastImportLine = await findLastImportLine(fileUri);
+      callScopedLastImportLines.set(filePath, lastImportLine); // Store in call-scoped cache
+    }
 
-        return { reference, isImport: importReferenceCache.get(cacheKey) };
-      })
-    );
+    const referenceLine = reference.range.start.line; // 0-based
 
-    // Sort results into appropriate arrays
-    for (const { reference, isImport } of results) {
-      if (isImport) {
-        importReferences.push(reference);
-      } else {
-        usageReferences.push(reference);
-      }
+    // Categorize based on line number
+    if (lastImportLine !== -1 && referenceLine <= lastImportLine) {
+      importReferences.push(reference);
+    } else {
+      usageReferences.push(reference);
     }
   }
 

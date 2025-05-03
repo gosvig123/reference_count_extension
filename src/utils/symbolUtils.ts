@@ -119,7 +119,7 @@ export function collectSymbols(
 }
 
 /**
- * Calculate reference count for a symbol
+ * Calculate reference count for a symbol, optionally excluding imports and self-references.
  */
 export async function calculateReferenceCount(
     references: vscode.Location[],
@@ -136,18 +136,24 @@ export async function calculateReferenceCount(
     // Calculate reference count based on settings
     let referenceCount = includeImports ? filteredReferences.length : usageReferences.length;
 
-    // Check for self-references
-    const selfReferenceCount = references.filter(ref =>
-        ref.range.start.line === symbolRange.start.line
-    ).length;
+    // Determine which list of references to check for self-references
+    const referencesToCheckForSelf = includeImports ? filteredReferences : usageReferences;
+
+    // Count self-references (references contained within the symbol's definition range)
+    // using the appropriate list based on includeImports
+    let selfReferenceCount = 0;
+    referencesToCheckForSelf.forEach(ref => {
+        if (symbolRange.contains(ref.range)) {
+            selfReferenceCount++;
+        }
+    });
 
     // Deduct self-references from the count
-    if (selfReferenceCount > 0) {
-        referenceCount = Math.max(0, referenceCount - selfReferenceCount);
-    }
+    referenceCount = Math.max(0, referenceCount - selfReferenceCount);
 
     return referenceCount;
 }
+
 
 /**
  * Check if a position is within a range
