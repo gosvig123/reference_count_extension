@@ -14,6 +14,7 @@
 - **Improve Code Quality**: Maintain a cleaner codebase by removing unused code
 - **Save Time**: No more manual searches to find all references
 
+This extension provides two powerful features:
 
 1. Displaying the number of times a function, class, or method is called directly in your editor
 2. Identifying unused symbols in your workspace with a dedicated view
@@ -27,7 +28,6 @@
 ![Unused Symbols View](https://raw.githubusercontent.com/gosvig123/reference_count_extension/main/workspace_unused.png)
 
 
-
 ## Features
 
 - **Inline Reference Counts**: See how many times each function, class, or method is used
@@ -36,13 +36,15 @@
 - **Smart Import Handling**: Excludes import statements by default for more accurate counts
 - **Performance Optimized**: Automatically excludes common folders like node_modules and build directories
 - **Highly Configurable**: Customize to fit your workflow
+- **Modular Architecture**: Clean, maintainable codebase with clear separation of concerns
 
-### New in Latest Version
+### New in Version 0.3.3
 
-- **Unused Symbols Explorer**: Dedicated view in the Explorer sidebar with on-demand scanning
-- **Performance Improvements**: Automatically excludes node_modules, .next, dist, and other build folders
-- **Improved Symbol Detection**: Better handling of nested symbols and class methods
-- **Enhanced Logging**: More detailed logging for easier troubleshooting
+- **Enhanced Architecture**: Restructured code to be more modular and maintainable
+- **Improved Import Detection**: Better handling of import statements for more accurate reference counting
+- **Real-time Config Updates**: Configuration changes are now applied immediately without requiring a restart
+- **Performance Optimizations**: Improved caching and reduced memory usage
+- **Updated Dependencies**: Now using latest versions of webpack and TypeScript
 
 ## Usage
 
@@ -63,18 +65,25 @@ Customize the extension through VS Code settings:
   "referenceCounter.fileExtensions": ["py", "js", "jsx", "ts", "tsx"],
 
   // Patterns to exclude from scanning (improves performance)
-  "referenceCounter.excludePatterns": ["node_modules", ".next", "dist", "build"],
+  "referenceCounter.excludePatterns": [
+    "node_modules",
+    ".next",
+    "dist",
+    "build",
+    "out",
+    ".git",
+    "coverage"
+  ],
 
   // Whether to include import statements in reference count
   "referenceCounter.includeImports": false,
 
   // Use a more compact display for reference counts
-  "referenceCounter.minimalisticDecorations": true,
-
-  // Enable or disable the Unused Symbols view
-  "referenceCounter.enableUnusedSymbols": true
+  "referenceCounter.minimalisticDecorations": true
 }
 ```
+
+All configuration changes are applied in real-time without requiring a restart.
 
 ## Contributing
 
@@ -102,9 +111,25 @@ We welcome contributions from the community! Reference Counter is an open-source
 
 3. Build and run
    ```bash
+   # Development build
    npm run compile
+   
+   # Production build
+   npm run package
+   
+   # Watch mode (auto-rebuilds on changes)
+   npm run watch
+   
+   # Run linter
+   npm run lint
+   
+   # Run tests
+   npm run test
+   
    # Press F5 in VS Code to launch the extension in debug mode
    ```
+
+The project uses TypeScript with target ES2022, module Node16, and includes support for JSX React style.
 
 ## Feedback and Support
 
