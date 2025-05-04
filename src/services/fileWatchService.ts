@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ErrorHandler } from '../utils/errorHandling';
 import { configManager } from '../config';
 import { IWorkspaceSymbolManager, IDecorationManager } from '../interfaces/symbolInterfaces';
+import { clearImportLineCache } from '../utils/utils';
 
 /**
  * Service that watches for file changes in the workspace
@@ -43,12 +44,15 @@ export class FileWatchService {
             async () => {
                 // Check if the saved file is supported
                 if (configManager.isFileSupported(document.uri)) {
+                    // Clear the import line cache for this file to ensure we detect any import changes
+                    clearImportLineCache();
+                    
                     // Update the symbols for the saved file
                     await this.workspaceSymbolManager.updateFileSymbols(document.uri);
 
                     // If the saved document is the currently active editor, update its decorations
                     if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document === document) {
-                        this.decorationManager.updateDecorations(vscode.window.activeTextEditor);
+                        this.decorationManager.updateDecorations(vscode.window.activeTextEditor, true);
                     }
                 }
             },

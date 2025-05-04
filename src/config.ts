@@ -141,8 +141,11 @@ export class ConfigManager implements IExtensionConfig {
             // Load the new values
             this.loadConfig();
             
-            // Notify listeners
-            this.notifyListeners();
+            // Check if includeImports setting has changed
+            const importSettingChanged = oldConfig.includeImports !== this._includeImports;
+            
+            // Notify listeners (with flag indicating if includeImports changed)
+            this.notifyListeners(importSettingChanged);
             
             ErrorHandler.info('Configuration refreshed', 'ConfigManager');
         } catch (error) {
@@ -165,9 +168,25 @@ export class ConfigManager implements IExtensionConfig {
     
     /**
      * Notify configuration change listeners
+     * @param importSettingChanged Flag indicating if the includeImports setting has changed
      */
-    private notifyListeners(): void {
+    private notifyListeners(importSettingChanged: boolean = false): void {
         const configObject = this.toObject();
+        
+        // Add metadata about the import setting change
+        (configObject as any)['_importSettingChanged'] = importSettingChanged;
+        
+        // Clear related caches if import setting changed
+        if (importSettingChanged) {
+            try {
+                const { clearImportLineCache } = require('./utils/utils');
+                clearImportLineCache();
+                ErrorHandler.info('Cleared import line cache due to setting change', 'ConfigManager');
+            } catch (error) {
+                ErrorHandler.error('Error clearing import line cache', error, 'ConfigManager');
+            }
+        }
+        
         for (const listener of this._changeListeners) {
             try {
                 listener(configObject);

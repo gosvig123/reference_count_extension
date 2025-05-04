@@ -43,17 +43,24 @@ export class DecorationManager implements IDecorationManager {
 
     /**
      * Update decorations for the editor with debouncing
+     * @param editor The text editor to update decorations for
+     * @param forceImmediate Optional flag to force immediate update (skip debouncing)
      */
-    public async updateDecorations(editor: vscode.TextEditor): Promise<void> {
+    public async updateDecorations(editor: vscode.TextEditor, forceImmediate: boolean = false): Promise<void> {
         // Clear any pending update
         if (this.decorationUpdateTimeout) {
             clearTimeout(this.decorationUpdateTimeout);
         }
 
-        // Schedule new update with debouncing
-        this.decorationUpdateTimeout = setTimeout(async () => {
+        if (forceImmediate) {
+            // Perform update immediately if force flag is set
             await this.performDecorationsUpdate(editor);
-        }, this.DEBOUNCE_DELAY);
+        } else {
+            // Schedule new update with debouncing
+            this.decorationUpdateTimeout = setTimeout(async () => {
+                await this.performDecorationsUpdate(editor);
+            }, this.DEBOUNCE_DELAY);
+        }
     }
 
     /**
@@ -66,7 +73,7 @@ export class DecorationManager implements IDecorationManager {
             }
 
             // Get symbols for the active file
-            await this.symbolCollector.getAndSetSymbolsForActiveFile(editor.document.uri);
+            await this.symbolCollector.getAndSetSymbolsForActiveFile(editor.document.uri, false);
 
             // If no symbols were found, exit early
             if (this.symbolCollector.activeFileSymbolStore.size === 0) {

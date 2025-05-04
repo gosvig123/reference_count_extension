@@ -49,8 +49,8 @@ export class SymbolManager implements ISymbolManager {
         return this.symbolCollector.collectSymbols(documentUri);
     }
 
-    public async getAndSetSymbolsForActiveFile(documentUri: vscode.Uri): Promise<void> {
-        return this.symbolCollector.getAndSetSymbolsForActiveFile(documentUri);
+    public async getAndSetSymbolsForActiveFile(documentUri: vscode.Uri, forceRefresh: boolean = false): Promise<void> {
+        return this.symbolCollector.getAndSetSymbolsForActiveFile(documentUri, forceRefresh);
     }
 
     public async processSymbols(symbolList: vscode.DocumentSymbol[]): Promise<void> {

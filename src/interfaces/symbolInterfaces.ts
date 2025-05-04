@@ -30,8 +30,10 @@ export interface ISymbolCollector {
     
     /**
      * Get symbols for the active file and store them
+     * @param documentUri The URI of the document to process
+     * @param forceRefresh Whether to force a refresh of symbols and references
      */
-    getAndSetSymbolsForActiveFile(documentUri: vscode.Uri): Promise<void>;
+    getAndSetSymbolsForActiveFile(documentUri: vscode.Uri, forceRefresh?: boolean): Promise<void>;
 }
 
 /**
@@ -40,8 +42,10 @@ export interface ISymbolCollector {
 export interface IDecorationManager {
     /**
      * Update decorations for the specified editor
+     * @param editor The text editor to update decorations for
+     * @param forceImmediate Optional flag to force immediate update (skip debouncing)
      */
-    updateDecorations(editor: vscode.TextEditor): Promise<void>;
+    updateDecorations(editor: vscode.TextEditor, forceImmediate?: boolean): Promise<void>;
     
     /**
      * Clean up resources used by decorations

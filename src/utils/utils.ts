@@ -27,6 +27,14 @@ export function filterReferences(
 const lastImportLineCache = new Map<string, number>();
 
 /**
+ * Clears the import line cache
+ */
+export function clearImportLineCache(): void {
+  lastImportLineCache.clear();
+  console.log('[ReferenceCounter Debug] Import line cache cleared.');
+}
+
+/**
  * Finds the line number of the last import/require statement in a document.
  * Caches the result per file URI.
  *
@@ -43,7 +51,6 @@ export async function findLastImportLine(documentUri: vscode.Uri): Promise<numbe
 
   let lastImportLine = -1;
   try {
-    console.log(`[Debug] Analyzing ${filePath}...`); // Added Debug Log
     const document = await vscode.workspace.openTextDocument(documentUri);
     const text = document.getText();
     const lines = text.split('\n');
@@ -79,20 +86,17 @@ export async function findLastImportLine(documentUri: vscode.Uri): Promise<numbe
         line = line.substring(0, line.indexOf('//')).trim();
       }
 
-      // console.log(`[Debug] Line ${i}: Processed: "${line}"`); // Uncomment for detailed line processing // Added Debug Log (Commented)
-
       // Check for empty lines after comment removal
       if (line === '') {
         continue;
       }
 
-      // Check common import/require patterns (Simplified Regex Check)
-      const potentialImportKeyword = line.match(/^\s*(import|require|using)/);
+      // Check common import/require patterns with Python support
+      const potentialImportKeyword = line.match(/^\s*(import|require|using|from)/);
       const isImport = !!potentialImportKeyword;
 
-
       if (isImport) {
-        // console.log(`[Debug] Line ${i}: Matched import keyword. Updating lastImportLine to ${i}`); // Uncomment for match details // Added Debug Log (Commented)
+        // console.log(`[ReferenceCounter Debug] Line ${i}: Matched import keyword. Updating lastImportLine to ${i}`);
         lastImportLine = i; // Update last known import line
       } else {
         // Heuristic: If we encounter a line that's clearly not an import,
@@ -113,16 +117,10 @@ export async function findLastImportLine(documentUri: vscode.Uri): Promise<numbe
     lastImportLine = -1; // Reset on error
   }
 
-  console.log(`[Debug] Finished analyzing ${filePath}. lastImportLine = ${lastImportLine}`); // Added Debug Log
   // Store in cache (even if it's -1)
   lastImportLineCache.set(filePath, lastImportLine);
   return lastImportLine;
 }
-
-
-// TODO: Add a mechanism to clear the lastImportLineCache when files change.
-// This could involve listening to vscode.workspace.onDidChangeTextDocument
-
 
 /**
  * Separates references into import references and usage references based on line number.

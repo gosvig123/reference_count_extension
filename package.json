@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "icon": "icon.png",
   "engines": {
     "vscode": "1.96.2"
@@ -34,10 +34,10 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.91.0",
+    "ts-loader": "^9.5.1",
     "typescript": "^5.4.5",
-    "webpack": "^5.92.1",
-    "webpack-cli": "^5.1.4",
-    "ts-loader": "^9.5.1"
+    "webpack": "^5.99.7",
+    "webpack-cli": "^6.0.1"
   },
   "publisher": "gosvig123",
   "repository": {

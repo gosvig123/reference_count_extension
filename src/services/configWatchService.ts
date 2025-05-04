@@ -38,14 +38,26 @@ export class ConfigWatchService {
     /**
      * Handle configuration changes
      */
-    private async handleConfigChange(newConfig: IExtensionConfig): Promise<void> {
+    private async handleConfigChange(newConfig: IExtensionConfig & { _importSettingChanged?: boolean }): Promise<void> {
         try {
+            // Check if the imports setting changed, which requires special handling
+            const importSettingChanged = newConfig._importSettingChanged === true;
+            
             // Clear caches when configuration changes
             this.workspaceSymbolManager.clearCaches();
             
             // If the active editor exists, update decorations with new config
             if (vscode.window.activeTextEditor) {
-                this.decorationManager.updateDecorations(vscode.window.activeTextEditor);
+                // If the import setting changed, force a refresh of symbols
+                // to recategorize imports and usages
+                if (importSettingChanged) {
+                    console.log('[ReferenceCounter Debug] Import setting changed, forcing symbol refresh');
+                    ErrorHandler.info('Import setting changed, forcing symbol refresh', 'ConfigWatchService');
+                    // Force a refresh by passing true as the second parameter
+                    await this.decorationManager.updateDecorations(vscode.window.activeTextEditor, true);
+                } else {
+                    await this.decorationManager.updateDecorations(vscode.window.activeTextEditor);
+                }
             }
             
             ErrorHandler.info('Applied configuration changes', 'ConfigWatchService');

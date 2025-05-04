@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { ErrorHandler } from '../utils/errorHandling';
 import { ISymbolCollector, ISymbolProcessor } from '../interfaces/symbolInterfaces';
 import { SUPPORTED_SYMBOL_KINDS, getDocumentSymbols, getSymbolReferences } from '../utils/symbolUtils';
+import { configManager } from '../config';
+import { categorizeReferences } from '../utils/utils';
 
 /**
  * Responsible for collecting symbols from files
@@ -13,14 +15,20 @@ export class SymbolCollector implements ISymbolCollector, ISymbolProcessor {
     // Maps to store symbols and their references for the active file
     public activeFileSymbolStore: Map<string, vscode.DocumentSymbol> = new Map();
     public activeFileSymbolReferences: Map<string, vscode.Location[]> = new Map();
+    
+    // Maps to store import references and usage references separately
+    public activeFileImportReferences: Map<string, vscode.Location[]> = new Map();
+    public activeFileUsageReferences: Map<string, vscode.Location[]> = new Map();
 
     /**
      * Get and store symbols for the active file
      */
-    public async getAndSetSymbolsForActiveFile(documentUri: vscode.Uri): Promise<void> {
+    public async getAndSetSymbolsForActiveFile(documentUri: vscode.Uri, forceRefresh: boolean = false): Promise<void> {
         this.activeFile = documentUri;
         this.activeFileSymbolStore = new Map();
         this.activeFileSymbolReferences = new Map();
+        this.activeFileImportReferences = new Map();
+        this.activeFileUsageReferences = new Map();
 
         try {
             const symbols = await this.collectSymbols(documentUri);
@@ -59,6 +67,18 @@ export class SymbolCollector implements ISymbolCollector, ISymbolProcessor {
                 if (this.activeFile) {
                     const references = await getSymbolReferences(this.activeFile, symbol);
                     this.activeFileSymbolReferences.set(symbol.name, references);
+                    
+                    // Categorize references as imports or usage
+                    try {
+                        const { importReferences, usageReferences } = await categorizeReferences(references);
+                        this.activeFileImportReferences.set(symbol.name, importReferences);
+                        this.activeFileUsageReferences.set(symbol.name, usageReferences);
+                    } catch (categorizationError) {
+                        ErrorHandler.error(`Error categorizing references for ${symbol.name}`, categorizationError, 'SymbolCollector');
+                        // Fallback to empty arrays for imports/usage if categorization fails
+                        this.activeFileImportReferences.set(symbol.name, []);
+                        this.activeFileUsageReferences.set(symbol.name, references); // Assume all are usage in case of error
+                    }
                 }
             }
 
