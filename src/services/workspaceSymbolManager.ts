@@ -9,7 +9,6 @@ import {
     calculateReferenceCount,
     getSupportedFiles,
     getSymbolReferences,
-    generateSymbolKey
 } from '../utils/symbolUtils';
 import { ProgressReporter } from '../utils/progressUtils';
 

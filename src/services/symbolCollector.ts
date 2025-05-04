@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { ErrorHandler } from '../utils/errorHandling';
 import { ISymbolCollector, ISymbolProcessor } from '../interfaces/symbolInterfaces';
 import { SUPPORTED_SYMBOL_KINDS, getDocumentSymbols, getSymbolReferences } from '../utils/symbolUtils';
-import { configManager } from '../config';
 import { categorizeReferences } from '../utils/utils';
 
 /**
