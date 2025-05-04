@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
-import { workspaceSymbolManager, UnusedSymbolInfo } from './workspaceSymbolManager';
+import { UnusedSymbolInfo } from '../interfaces/symbolInterfaces';
+import { ErrorHandler } from '../utils/errorHandling';
 
-// Tree item to represent an unused symbol
+/**
+ * Tree item to represent an unused symbol
+ */
 export class UnusedSymbolItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
@@ -44,7 +47,9 @@ export class UnusedSymbolItem extends vscode.TreeItem {
   contextValue = 'unusedSymbol';
 }
 
-// Tree data provider for unused symbols
+/**
+ * Tree data provider for unused symbols
+ */
 export class UnusedSymbolsProvider implements vscode.TreeDataProvider<UnusedSymbolItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<UnusedSymbolItem | undefined | null | void> = new vscode.EventEmitter<UnusedSymbolItem | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<UnusedSymbolItem | undefined | null | void> = this._onDidChangeTreeData.event;
@@ -52,7 +57,7 @@ export class UnusedSymbolsProvider implements vscode.TreeDataProvider<UnusedSymb
   private isLoading: boolean = false;
 
   constructor() {
-    console.log('UnusedSymbolsProvider initialized');
+    ErrorHandler.info('UnusedSymbolsProvider initialized', 'UnusedSymbolsView');
   }
 
   /**
@@ -60,29 +65,35 @@ export class UnusedSymbolsProvider implements vscode.TreeDataProvider<UnusedSymb
    * If no symbols are provided, the view will be refreshed with empty cache
    */
   refresh(unusedSymbols?: UnusedSymbolInfo[]): void {
-    this.isLoading = false;
+    try {
+      this.isLoading = false;
 
-    if (unusedSymbols) {
-      // If we have symbols, create tree items for them
-      if (unusedSymbols.length === 0) {
-        this.cachedItems = [this.createNoUnusedSymbolsItem()];
+      if (unusedSymbols) {
+        // If we have symbols, create tree items for them
+        if (unusedSymbols.length === 0) {
+          this.cachedItems = [this.createNoUnusedSymbolsItem()];
+        } else {
+          this.cachedItems = unusedSymbols.map(item => {
+            return new UnusedSymbolItem(
+              item.symbol.name,
+              vscode.TreeItemCollapsibleState.None,
+              item.symbol,
+              item.uri
+            );
+          });
+        }
       } else {
-        this.cachedItems = unusedSymbols.map(item => {
-          return new UnusedSymbolItem(
-            item.symbol.name,
-            vscode.TreeItemCollapsibleState.None,
-            item.symbol,
-            item.uri
-          );
-        });
+        // If no symbols provided, just clear the cache
+        this.cachedItems = [];
       }
-    } else {
-      // If no symbols provided, just clear the cache
-      this.cachedItems = [];
-    }
 
-    // Notify the tree view to refresh
-    this._onDidChangeTreeData.fire();
+      // Notify the tree view to refresh
+      this._onDidChangeTreeData.fire();
+    } catch (error) {
+      ErrorHandler.error('Error refreshing unused symbols view', error, 'UnusedSymbolsView');
+      this.cachedItems = [this.createErrorItem()];
+      this._onDidChangeTreeData.fire();
+    }
   }
 
   getTreeItem(element: UnusedSymbolItem): vscode.TreeItem {
@@ -93,25 +104,30 @@ export class UnusedSymbolsProvider implements vscode.TreeDataProvider<UnusedSymb
    * Get children for the tree view
    */
   async getChildren(element?: UnusedSymbolItem): Promise<UnusedSymbolItem[]> {
-    // If we have an element, return its children (none for now)
-    if (element) {
-      return []; // No child items for now
-    }
+    try {
+      // If we have an element, return its children (none for now)
+      if (element) {
+        return []; // No child items for now
+      }
 
-    // If we're already loading, show the loading indicator
-    if (this.isLoading) {
+      // If we're already loading, show the loading indicator
+      if (this.isLoading) {
+        return [this.createLoadingItem()];
+      }
+
+      // Use cached items if available
+      if (this.cachedItems.length > 0) {
+        return this.cachedItems;
+      }
+
+      // If we get here, we need to show a loading indicator
+      // The actual loading is triggered by the command, not by the tree view
+      this.isLoading = true;
       return [this.createLoadingItem()];
+    } catch (error) {
+      ErrorHandler.error('Error getting children for unused symbols view', error, 'UnusedSymbolsView');
+      return [this.createErrorItem()];
     }
-
-    // Use cached items if available
-    if (this.cachedItems.length > 0) {
-      return this.cachedItems;
-    }
-
-    // If we get here, we need to show a loading indicator
-    // The actual loading is triggered by the command, not by the tree view
-    this.isLoading = true;
-    return [this.createLoadingItem()];
   }
 
   private createLoadingItem(): UnusedSymbolItem {

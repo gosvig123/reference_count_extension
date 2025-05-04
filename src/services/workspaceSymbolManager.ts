@@ -1,33 +1,36 @@
 import * as vscode from 'vscode';
-import { configManager } from './config';
-import {
-    getDocumentSymbols,
-    getSymbolReferences,
-    collectSymbols,
+import { configManager } from '../config';
+import { ErrorHandler } from '../utils/errorHandling';
+import { IWorkspaceSymbolManager, UnusedSymbolInfo } from '../interfaces/symbolInterfaces';
+import { SymbolCollector } from './symbolCollector';
+import { 
+    collectSymbols, 
+    isPositionInRange,
     calculateReferenceCount,
     getSupportedFiles,
-    isPositionInRange
-} from './utils/symbolUtils';
-import { ProgressReporter } from './utils/progressUtils';
+    getSymbolReferences,
+    generateSymbolKey
+} from '../utils/symbolUtils';
+import { ProgressReporter } from '../utils/progressUtils';
 
 /**
- * Interface for unused symbol information
+ * Manages workspace-level symbol operations
  */
-export interface UnusedSymbolInfo {
-    symbol: vscode.DocumentSymbol;
-    uri: vscode.Uri;
-}
-
-/**
- * Manages symbols across the workspace
- * Provides functionality for finding unused symbols
- */
-class WorkspaceSymbolManager {
-    // Map to store all symbols in the workspace
+export class WorkspaceSymbolManager implements IWorkspaceSymbolManager {
+    // Workspace-level symbol storage
     private workspaceSymbols: Map<string, { symbol: vscode.DocumentSymbol, uri: vscode.Uri }> = new Map();
-
+    
     // Cache for reference counts to avoid duplicate calculations
     private referenceCountCache: Map<string, number> = new Map();
+    
+    private symbolCollector: SymbolCollector;
+
+    /**
+     * Initialize with a symbol collector
+     */
+    constructor(symbolCollector: SymbolCollector) {
+        this.symbolCollector = symbolCollector;
+    }
 
     /**
      * Get all symbols in the workspace with progress reporting
@@ -57,21 +60,47 @@ class WorkspaceSymbolManager {
                 }
 
                 try {
-                    await this.processFile(fileUri);
+                    await this.processWorkspaceFile(fileUri);
 
                     // Report progress
                     if (reporter) {
                         reporter.report(`Processed ${fileUri.path.split('/').pop()}`);
                     }
                 } catch (error) {
-                    console.error(`Error processing file ${fileUri.fsPath}:`, error);
+                    ErrorHandler.error(`Error processing file ${fileUri.fsPath}`, error, 'WorkspaceSymbolManager');
                 }
             }
 
             return this.workspaceSymbols;
         } catch (error) {
-            console.error('Error getting workspace symbols:', error);
+            ErrorHandler.error('Error getting workspace symbols', error, 'WorkspaceSymbolManager');
             return new Map();
+        }
+    }
+
+    /**
+     * Process a single file in the workspace to extract symbols
+     */
+    private async processWorkspaceFile(fileUri: vscode.Uri): Promise<void> {
+        try {
+            // Try to open the document first to ensure it's loaded
+            try {
+                await vscode.workspace.openTextDocument(fileUri);
+            } catch (docError) {
+                // Continue anyway, as getDocumentSymbols might still work
+            }
+
+            // Get symbols for the file
+            const symbols = await this.symbolCollector.collectSymbols(fileUri);
+
+            if (symbols.length === 0) {
+                return;
+            }
+
+            // Collect symbols and add them to the workspace symbols map
+            collectSymbols(symbols, fileUri, this.workspaceSymbols);
+        } catch (error) {
+            ErrorHandler.error(`Error processing file ${fileUri.fsPath}`, error, 'WorkspaceSymbolManager');
         }
     }
 
@@ -144,7 +173,7 @@ class WorkspaceSymbolManager {
                     reporter.report(`Analyzing ${symbol.name}`);
                 }
             } catch (error) {
-                console.error(`Error analyzing symbol ${symbol.name}:`, error);
+                ErrorHandler.error(`Error analyzing symbol ${symbol.name}`, error, 'WorkspaceSymbolManager');
             }
         }
 
@@ -182,32 +211,6 @@ class WorkspaceSymbolManager {
     }
 
     /**
-     * Process a single file to extract symbols
-     */
-    private async processFile(fileUri: vscode.Uri): Promise<void> {
-        try {
-            // Try to open the document first to ensure it's loaded
-            try {
-                await vscode.workspace.openTextDocument(fileUri);
-            } catch (docError) {
-                // Continue anyway, as getDocumentSymbols might still work
-            }
-
-            // Get symbols for the file
-            const symbols = await getDocumentSymbols(fileUri);
-
-            if (symbols.length === 0) {
-                return;
-            }
-
-            // Collect symbols and add them to the workspace symbols map
-            collectSymbols(symbols, fileUri, this.workspaceSymbols);
-        } catch (error) {
-            console.error(`Error processing file ${fileUri.fsPath}:`, error);
-        }
-    }
-
-    /**
      * Update symbols for a specific file
      */
     public async updateFileSymbols(fileUri: vscode.Uri): Promise<void> {
@@ -215,13 +218,24 @@ class WorkspaceSymbolManager {
         for (const [key, value] of this.workspaceSymbols.entries()) {
             if (value.uri.fsPath === fileUri.fsPath) {
                 this.workspaceSymbols.delete(key);
+                // Also clear the reference count cache for this symbol
+                this.referenceCountCache.delete(key);
             }
         }
 
         // Process the file again
-        await this.processFile(fileUri);
+        await this.processWorkspaceFile(fileUri);
+        
+        // If this is the active file, update the active file symbols too
+        if (this.symbolCollector.activeFile && this.symbolCollector.activeFile.fsPath === fileUri.fsPath) {
+            await this.symbolCollector.getAndSetSymbolsForActiveFile(fileUri);
+        }
+    }
+
+    /**
+     * Clear all caches
+     */
+    public clearCaches(): void {
+        this.referenceCountCache.clear();
     }
 }
-
-// Export a singleton instance
-export const workspaceSymbolManager = new WorkspaceSymbolManager();

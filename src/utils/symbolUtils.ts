@@ -11,16 +11,15 @@ export const SUPPORTED_SYMBOL_KINDS = [
 ];
 
 /**
- * Get symbols for a document
+ * Get symbols for a document with retry mechanism
  */
 export async function getDocumentSymbols(documentUri: vscode.Uri): Promise<vscode.DocumentSymbol[]> {
     try {
         // Try to ensure the document is loaded
         try {
             await vscode.workspace.openTextDocument(documentUri);
-            // Just opening it is enough to ensure it's loaded for the symbol provider
         } catch (docError) {
-            // Continue anyway
+            // Continue anyway - the symbol provider might still work without it
         }
 
         // Try up to 3 times with a small delay between attempts
@@ -52,11 +51,7 @@ export async function getDocumentSymbols(documentUri: vscode.Uri): Promise<vscod
             }
         }
 
-        if (!Array.isArray(symbols) || symbols.length === 0) {
-            return [];
-        }
-
-        return symbols;
+        return Array.isArray(symbols) ? symbols : [];
     } catch (error) {
         console.error(`Error getting symbols for ${documentUri.fsPath}:`, error);
         return [];
@@ -64,7 +59,7 @@ export async function getDocumentSymbols(documentUri: vscode.Uri): Promise<vscod
 }
 
 /**
- * Get references for a symbol
+ * Get references for a symbol with improved error handling
  */
 export async function getSymbolReferences(
     documentUri: vscode.Uri,
@@ -72,6 +67,11 @@ export async function getSymbolReferences(
     includeDeclaration: boolean = false
 ): Promise<vscode.Location[]> {
     try {
+        if (!symbol.selectionRange) {
+            console.warn(`Symbol ${symbol.name} has no selection range`);
+            return [];
+        }
+
         const position = symbol.selectionRange.start;
 
         const references = await vscode.commands.executeCommand<vscode.Location[]>(
@@ -81,7 +81,7 @@ export async function getSymbolReferences(
             { includeDeclaration }
         );
 
-        return references || [];
+        return Array.isArray(references) ? references : [];
     } catch (error) {
         console.error(`Error getting references for symbol ${symbol.name}:`, error);
         return [];
@@ -94,32 +94,38 @@ export async function getSymbolReferences(
 export function collectSymbols(
     symbolList: vscode.DocumentSymbol[],
     uri: vscode.Uri,
-    symbolMap: Map<string, { symbol: vscode.DocumentSymbol, uri: vscode.Uri }> = new Map(),
-    isRecursiveCall: boolean = false
+    symbolMap: Map<string, { symbol: vscode.DocumentSymbol, uri: vscode.Uri }> = new Map()
 ): Map<string, { symbol: vscode.DocumentSymbol, uri: vscode.Uri }> {
-    symbolList.forEach(symbol => {
+    for (const symbol of symbolList) {
         // Only store supported symbol kinds
         if (SUPPORTED_SYMBOL_KINDS.includes(symbol.kind)) {
-            const position = symbol.range.start;
-            const key = `${uri.fsPath}:${symbol.name}:${position.line}:${position.character}`;
-
+            const key = generateSymbolKey(uri, symbol);
+            
             // Check if we already have this symbol to avoid duplicates
             if (!symbolMap.has(key)) {
                 symbolMap.set(key, { symbol, uri });
             }
         }
 
-        // If it's a class with children, recurse (only process children of classes)
+        // If it's a class with children, recurse
         if (symbol.kind === vscode.SymbolKind.Class && symbol.children && symbol.children.length > 0) {
-            collectSymbols(symbol.children, uri, symbolMap, true);
+            collectSymbols(symbol.children, uri, symbolMap);
         }
-    });
+    }
 
     return symbolMap;
 }
 
 /**
- * Calculate reference count for a symbol, optionally excluding imports and self-references.
+ * Generate a unique key for a symbol based on its location
+ */
+export function generateSymbolKey(uri: vscode.Uri, symbol: vscode.DocumentSymbol): string {
+    const position = symbol.range.start;
+    return `${uri.fsPath}:${symbol.name}:${position.line}:${position.character}`;
+}
+
+/**
+ * Calculate reference count for a symbol, excluding self-references
  */
 export async function calculateReferenceCount(
     references: vscode.Location[],
@@ -131,29 +137,17 @@ export async function calculateReferenceCount(
     const filteredReferences = filterReferences(references, excludePatterns);
 
     // Categorize references as imports or actual usage
-    const { usageReferences } = await categorizeReferences(filteredReferences);
+    const { importReferences, usageReferences } = await categorizeReferences(filteredReferences);
 
-    // Calculate reference count based on settings
-    let referenceCount = includeImports ? filteredReferences.length : usageReferences.length;
-
-    // Determine which list of references to check for self-references
-    const referencesToCheckForSelf = includeImports ? filteredReferences : usageReferences;
+    // Determine which references to count based on settings
+    const relevantReferences = includeImports ? filteredReferences : usageReferences;
 
     // Count self-references (references contained within the symbol's definition range)
-    // using the appropriate list based on includeImports
-    let selfReferenceCount = 0;
-    referencesToCheckForSelf.forEach(ref => {
-        if (symbolRange.contains(ref.range)) {
-            selfReferenceCount++;
-        }
-    });
+    const selfReferences = relevantReferences.filter(ref => symbolRange.contains(ref.range));
 
-    // Deduct self-references from the count
-    referenceCount = Math.max(0, referenceCount - selfReferenceCount);
-
-    return referenceCount;
+    // Return count after deducting self-references
+    return Math.max(0, relevantReferences.length - selfReferences.length);
 }
-
 
 /**
  * Check if a position is within a range
@@ -169,9 +163,14 @@ export function isPositionInRange(position: vscode.Position, range: vscode.Range
  * Get all supported files in the workspace
  */
 export async function getSupportedFiles(includePattern: string, excludePattern: string | null): Promise<vscode.Uri[]> {
-    return await vscode.workspace.findFiles(
-        includePattern,
-        excludePattern,
-        1000
-    );
+    try {
+        return await vscode.workspace.findFiles(
+            includePattern,
+            excludePattern || undefined,
+            1000
+        );
+    } catch (error) {
+        console.error(`Error finding files with pattern ${includePattern}:`, error);
+        return [];
+    }
 }
