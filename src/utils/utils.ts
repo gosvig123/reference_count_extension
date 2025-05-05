@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
+import { CommentHandler } from './commentUtils';
+import { languageHandlerRegistry } from './languageHandlers';
 
+/**
+ * Filter references based on exclude patterns
+ */
 export function filterReferences(
   references: vscode.Location[],
   excludePatterns: string[]
@@ -55,61 +60,24 @@ export async function findLastImportLine(documentUri: vscode.Uri): Promise<numbe
     const text = document.getText();
     const lines = text.split('\n');
 
-    let inMultiLineComment = false;
+    // Get the appropriate language handler for this file
+    const languageHandler = languageHandlerRegistry.getHandlerForFile(filePath);
+
+    // Create a comment handler
+    const commentHandler = new CommentHandler();
 
     for (let i = 0; i < lines.length; i++) {
-      const originalLine = lines[i];
-      let line = originalLine.trim();
+      // Process the line to remove comments
+      const line = commentHandler.processLine(lines[i]);
 
-      // Basic multi-line comment handling
-      if (inMultiLineComment) {
-        if (line.includes('*/')) {
-          inMultiLineComment = false;
-          line = line.substring(line.indexOf('*/') + 2).trim(); // Process rest of the line
-        } else {
-          continue; // Skip lines entirely within a multi-line comment
-        }
-      }
-      if (line.includes('/*')) {
-        if (line.includes('*/')) {
-          // Single-line multi-line comment (e.g., /* comment */ import ...;) - remove comment part
-           line = line.substring(0, line.indexOf('/*')) + line.substring(line.indexOf('*/') + 2);
-           line = line.trim();
-        } else {
-          inMultiLineComment = true;
-          line = line.substring(0, line.indexOf('/*')).trim(); // Process line before comment starts
-        }
-      }
-
-      // Remove single-line comments
-      if (line.includes('//')) {
-        line = line.substring(0, line.indexOf('//')).trim();
-      }
-
-      // Check for empty lines after comment removal
+      // Skip empty lines
       if (line === '') {
         continue;
       }
 
-      // Check common import/require patterns with Python support
-      const potentialImportKeyword = line.match(/^\s*(import|require|using|from)/);
-      const isImport = !!potentialImportKeyword;
-
-      if (isImport) {
-        // console.log(`[ReferenceCounter Debug] Line ${i}: Matched import keyword. Updating lastImportLine to ${i}`);
+      // Check if this is an import or export line using the language handler
+      if (languageHandler.isImportOrExportLine(line)) {
         lastImportLine = i; // Update last known import line
-      } else {
-        // Heuristic: If we encounter a line that's clearly not an import,
-        // and it's not empty or just a comment, assume the import block has ended.
-        // This helps avoid classifying code lines that happen to be after a gap
-        // following the last import as part of the import block.
-        // More sophisticated parsing (AST) would be better here.
-        if (lastImportLine !== -1) {
-          // If we already found *some* import, and this line is *not* an import,
-          // we can potentially stop searching earlier. But let's scan the whole file
-          // for simplicity and to catch imports potentially separated by comments/blank lines.
-          // For now, continue scanning the whole file.
-        }
       }
     }
   } catch (error) {
@@ -120,6 +88,32 @@ export async function findLastImportLine(documentUri: vscode.Uri): Promise<numbe
   // Store in cache (even if it's -1)
   lastImportLineCache.set(filePath, lastImportLine);
   return lastImportLine;
+}
+
+/**
+ * Checks if a reference is a component usage in JSX or similar
+ */
+async function isComponentUsage(reference: vscode.Location): Promise<boolean> {
+  try {
+    const fileUri = reference.uri;
+    const filePath = fileUri.fsPath;
+    const referenceLine = reference.range.start.line;
+
+    // Get the appropriate language handler
+    const languageHandler = languageHandlerRegistry.getHandlerForFile(filePath);
+
+    // Only proceed with component detection for handlers that support it
+    if (languageHandler.isComponentUsage) {
+      const document = await vscode.workspace.openTextDocument(fileUri);
+      const lineText = document.lineAt(referenceLine).text;
+
+      return languageHandler.isComponentUsage(lineText);
+    }
+  } catch (error) {
+    console.error(`Error checking for component usage: ${error}`);
+  }
+
+  return false;
 }
 
 /**
@@ -140,20 +134,24 @@ export async function categorizeReferences(references: vscode.Location[]): Promi
   // to avoid redundant lookups for the same file in a single batch.
   const callScopedLastImportLines = new Map<string, number>();
 
-  // Process references - can potentially still batch if performance dictates,
-  // but let's start simpler.
+  // Process references
   for (const reference of references) {
     const fileUri = reference.uri;
     const filePath = fileUri.fsPath;
-    let lastImportLine = -1;
 
-    // Check call-scoped cache first
+    // Check if this is a component usage (for React/JSX)
+    if (await isComponentUsage(reference)) {
+      usageReferences.push(reference);
+      continue;
+    }
+
+    // Get the last import line for this file
+    let lastImportLine = -1;
     if (callScopedLastImportLines.has(filePath)) {
       lastImportLine = callScopedLastImportLines.get(filePath)!;
     } else {
-      // If not in call-scoped cache, find (potentially using the module cache)
       lastImportLine = await findLastImportLine(fileUri);
-      callScopedLastImportLines.set(filePath, lastImportLine); // Store in call-scoped cache
+      callScopedLastImportLines.set(filePath, lastImportLine);
     }
 
     const referenceLine = reference.range.start.line; // 0-based

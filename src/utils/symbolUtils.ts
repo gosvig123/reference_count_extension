@@ -100,7 +100,7 @@ export function collectSymbols(
         // Only store supported symbol kinds
         if (SUPPORTED_SYMBOL_KINDS.includes(symbol.kind)) {
             const key = generateSymbolKey(uri, symbol);
-            
+
             // Check if we already have this symbol to avoid duplicates
             if (!symbolMap.has(key)) {
                 symbolMap.set(key, { symbol, uri });
@@ -125,6 +125,43 @@ export function generateSymbolKey(uri: vscode.Uri, symbol: vscode.DocumentSymbol
 }
 
 /**
+ * Groups references by file path
+ */
+function groupReferencesByFile(references: vscode.Location[]): Map<string, vscode.Location[]> {
+    const referencesByFile = new Map<string, vscode.Location[]>();
+
+    for (const ref of references) {
+        const filePath = ref.uri.fsPath;
+        if (!referencesByFile.has(filePath)) {
+            referencesByFile.set(filePath, []);
+        }
+        referencesByFile.get(filePath)!.push(ref);
+    }
+
+    return referencesByFile;
+}
+
+/**
+ * Counts references in the same file as the symbol definition
+ */
+function countSameFileReferences(
+    fileRefs: vscode.Location[],
+    symbolRange: vscode.Range
+): number {
+    // Count self-references (references contained within the symbol's definition range)
+    const selfReferences = fileRefs.filter(ref => symbolRange.contains(ref.range));
+
+    // If there are any non-self references in the same file, count them
+    if (fileRefs.length > selfReferences.length) {
+        return fileRefs.length - selfReferences.length;
+    } else {
+        // If all references in this file are self-references, count at least 1
+        // This ensures functions used only within their own definition are counted
+        return 1;
+    }
+}
+
+/**
  * Calculate reference count for a symbol, excluding self-references
  */
 export async function calculateReferenceCount(
@@ -137,16 +174,31 @@ export async function calculateReferenceCount(
     const filteredReferences = filterReferences(references, excludePatterns);
 
     // Categorize references as imports or actual usage
-    const { importReferences, usageReferences } = await categorizeReferences(filteredReferences);
+    const { usageReferences } = await categorizeReferences(filteredReferences);
 
     // Determine which references to count based on settings
     const relevantReferences = includeImports ? filteredReferences : usageReferences;
 
-    // Count self-references (references contained within the symbol's definition range)
-    const selfReferences = relevantReferences.filter(ref => symbolRange.contains(ref.range));
+    // Group references by file to handle same-file references properly
+    const referencesByFile = groupReferencesByFile(relevantReferences);
 
-    // Return count after deducting self-references
-    return Math.max(0, relevantReferences.length - selfReferences.length);
+    // Count references, handling self-references appropriately
+    let totalCount = 0;
+
+    // Get the file path from one of the references to compare with
+    const symbolFilePath = references.length > 0 ? references[0].uri.fsPath : '';
+
+    for (const [filePath, fileRefs] of referencesByFile.entries()) {
+        // For references in the same file as the symbol definition
+        if (filePath === symbolFilePath) {
+            totalCount += countSameFileReferences(fileRefs, symbolRange);
+        } else {
+            // For references in other files, count all of them
+            totalCount += fileRefs.length;
+        }
+    }
+
+    return totalCount;
 }
 
 /**
