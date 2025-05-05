@@ -25,11 +25,11 @@ export interface LanguageHandler {
  */
 export abstract class BaseLanguageHandler implements LanguageHandler {
   abstract canHandle(filePath: string): boolean;
-  
+
   isImportOrExportLine(line: string): boolean {
     return false; // Override in subclasses
   }
-  
+
   isComponentUsage(lineText: string): boolean {
     return false; // Override in subclasses
   }
@@ -42,18 +42,21 @@ export class JavaScriptHandler extends BaseLanguageHandler {
   canHandle(filePath: string): boolean {
     return /\.(js|jsx|ts|tsx)$/i.test(filePath);
   }
-  
+
   isImportOrExportLine(line: string): boolean {
     // Check for import statements
-    const potentialImportKeyword = line.match(/^\s*(import|require)/);
+    const potentialImportKeyword = line.match(/^\s*(import|export)/);
     const isImport = !!potentialImportKeyword;
-    
-    // Check for export statements
-    const isExport = line.startsWith('export');
-    
-    return isImport || isExport;
+
+    // Check for export statements with whitespace
+    const isExport = line.trim().startsWith('export');
+
+    // Check for require statements
+    const isRequire = line.includes('require(');
+
+    return isImport || isExport || isRequire;
   }
-  
+
   isComponentUsage(lineText: string): boolean {
     return (
       // Component in JSX expression
@@ -79,7 +82,7 @@ export class PythonHandler extends BaseLanguageHandler {
   canHandle(filePath: string): boolean {
     return /\.py$/i.test(filePath);
   }
-  
+
   isImportOrExportLine(line: string): boolean {
     // Check for import or from statements
     const potentialImportKeyword = line.match(/^\s*(import|from)/);
@@ -94,7 +97,7 @@ export class DefaultLanguageHandler extends BaseLanguageHandler {
   canHandle(filePath: string): boolean {
     return true; // Fallback handler
   }
-  
+
   isImportOrExportLine(line: string): boolean {
     // Generic import detection for other languages
     const potentialImportKeyword = line.match(/^\s*(import|require|using|include)/);
@@ -107,14 +110,14 @@ export class DefaultLanguageHandler extends BaseLanguageHandler {
  */
 export class LanguageHandlerRegistry {
   private handlers: LanguageHandler[] = [];
-  
+
   constructor() {
     // Register handlers in order of specificity
     this.handlers.push(new JavaScriptHandler());
     this.handlers.push(new PythonHandler());
     this.handlers.push(new DefaultLanguageHandler()); // Fallback handler
   }
-  
+
   /**
    * Get the appropriate handler for a file
    */
@@ -124,7 +127,7 @@ export class LanguageHandlerRegistry {
         return handler;
       }
     }
-    
+
     // This should never happen as we have a fallback handler
     return new DefaultLanguageHandler();
   }
