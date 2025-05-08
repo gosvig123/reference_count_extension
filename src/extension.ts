@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
 import { decorateFile } from './decorateFile';
+import { getSymbolsForActiveFile } from './getSymbolsForActiveFile';
+import { getConfig } from './configChecks';
+import { updateDecorations } from './updateDecorations';
 
 let decorationType: vscode.TextEditorDecorationType;
 
@@ -47,36 +50,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
 }
 
-async function updateDecorations(editor: vscode.TextEditor) {
-  // Clear any pending update
-  if (decorationUpdateTimeout) {
-    clearTimeout(decorationUpdateTimeout);
-  }
+export async function getAndSetSymbolsForDocument(editor: vscode.TextEditor) {
+  const { includeImports, minimalisticDecorations, isValidFile } = getConfig(editor);
 
-  // Schedule new update with debouncing
-  decorationUpdateTimeout = setTimeout(async () => {
-    await performDecorationsUpdate(editor);
-  }, DEBOUNCE_DELAY);
-}
-
-async function performDecorationsUpdate(editor: vscode.TextEditor) {
-  const config = vscode.workspace.getConfiguration('referenceCounter');
-  const excludePatterns = config.get<string[]>('excludePatterns') || [];
-  const includeImports = config.get<boolean>('includeImports') || false;
-  const minimalisticDecorations = config.get<boolean>('minimalisticDecorations') || false;
-
-  const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
-  const fileExtension = editor.document.uri.path.split('.').pop() || '';
-
-  if (!acceptedExtensions.has(fileExtension)) {
+  if (!isValidFile) {
     console.log('File type not supported');
     return;
   }
 
-  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-    'vscode.executeDocumentSymbolProvider',
-    editor.document.uri,
-  );
+  const symbols = await getSymbolsForActiveFile(editor);
 
   if (!symbols || symbols.length === 0) {
     console.log('No symbols found');
@@ -109,6 +91,7 @@ async function performDecorationsUpdate(editor: vscode.TextEditor) {
 
       // Filter out excluded references
       const filteredReferences = references?.filter(reference => {
+        const excludePatterns = config.get<string[]>('excludePatterns') || [];
         const refPath = reference.uri.path;
         return !excludePatterns.some(pattern =>
           new RegExp(pattern.replace(/\*/g, '.*')).test(refPath)
@@ -142,7 +125,6 @@ function getReferencedFiles(references: vscode.Location[] | undefined, editor: v
   // Use a Set for efficient unique tracking
   const uniqueFiles = new Set<string>();
   const currentFile = editor.document.uri.path.split('/').pop() || '';
-
   for (const reference of references) {
     const filename = reference.uri.path.split('/').pop() || '';
     if (filename !== currentFile) {
