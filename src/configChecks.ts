@@ -13,6 +13,7 @@ export function getConfig(editor: vscode.TextEditor) {
     const validFileExtensions = config.get<string[]>('validFileExtensions') || [];
     const includeImports = config.get<boolean>('includeImports') || false;
     const minimalisticDecorations = config.get<boolean>('minimalisticDecorations') || false;
+    const excludePatterns = config.get<string[]>('excludePatterns') || [];
     const isValidFile = shouldProcessDocument(editor);
-    return { validFileExtensions, includeImports, minimalisticDecorations, isValidFile };
+    return { validFileExtensions, includeImports, minimalisticDecorations, excludePatterns, isValidFile };
 }

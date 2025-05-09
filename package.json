@@ -77,6 +77,14 @@
           "type": "boolean",
           "default": true,
           "description": "Use a minimalistic, compact version of the decorator."
+        },
+        "referenceCounter.validFileExtensions": {
+          "type": "array",
+          "default": ["py", "js", "jsx", "ts", "tsx"],
+          "items": {
+            "type": "string"
+          },
+          "description": "Valid file extensions to count references for. Example: ['py', 'js', 'jsx', 'ts', 'tsx']"
         }
       }
     }

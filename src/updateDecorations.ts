@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getAndSetSymbolsForDocument } from './extension';
+import { getAndSetSymbolsForDocument } from './getAndSetSymbolsForDocument';
 
 const DEBOUNCE_DELAY = 500; // ms
 let decorationUpdateTimeout: NodeJS.Timeout | undefined;
