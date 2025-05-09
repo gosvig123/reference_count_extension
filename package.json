@@ -18,7 +18,8 @@
     "onLanguage:javascriptreact",
     "onLanguage:typescriptreact",
     "onCommand:css-class-counter.countClasses",
-    "onLanguage:python"
+    "onLanguage:python",
+    "onView:unusedSymbolsView"
   ],
   "main": "./dist/extension.js",
   "scripts": {
@@ -62,11 +63,24 @@
       "properties": {
         "referenceCounter.excludePatterns": {
           "type": "array",
-          "default": [],
+          "default": [
+            "**/node_modules/**",
+            "**/bower_components/**",
+            "**/dist/**",
+            "**/out/**",
+            "**/build/**",
+            "**/coverage/**",
+            "**/*.min.js",
+            "**/*.min.css",
+            "**/*test/**i",
+            ".next",
+            ".next/",
+            ".next/cache"
+          ],
           "items": {
             "type": "string"
           },
-          "description": "Patterns to exclude from reference counting. all file names that include the added string or folders that contain the added string will be excluded. Example: to exclude all files in the 'node_modules' folder, add 'node_modules' to the list."
+          "description": "Patterns to exclude from reference counting (files and references). Supports glob patterns (e.g., '**/node_modules/**', 'build/'). Applied to both file scanning and reference checking."
         },
         "referenceCounter.includeImports": {
           "type": "boolean",
@@ -80,13 +94,86 @@
         },
         "referenceCounter.validFileExtensions": {
           "type": "array",
-          "default": ["py", "js", "jsx", "ts", "tsx"],
+          "default": [
+            "py",
+            "js",
+            "jsx",
+            "ts",
+            "tsx"
+          ],
           "items": {
             "type": "string"
           },
           "description": "Valid file extensions to count references for. Example: ['py', 'js', 'jsx', 'ts', 'tsx']"
         }
       }
+    },
+    "commands": [
+      {
+        "command": "referenceCounter.findUnusedSymbols",
+        "title": "Find Unused Symbols in Workspace",
+        "category": "ReferenceCounter",
+        "icon": "$(search)"
+      },
+      {
+        "command": "referenceCounter.refreshUnusedSymbols",
+        "title": "Refresh Unused Symbols",
+        "category": "ReferenceCounter",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "referenceCounter.clearUnusedSymbols",
+        "title": "Clear Unused Symbols",
+        "category": "ReferenceCounter",
+        "icon": "$(clear-all)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "reference-counter-sidebar",
+          "title": "Reference Counter",
+          "icon": "$(list-tree)"
+        }
+      ]
+    },
+    "views": {
+      "reference-counter-sidebar": [
+        {
+          "id": "unusedSymbolsView",
+          "name": "Unused Symbols",
+          "when": "true"
+        }
+      ]
+    },
+    "viewsActions": {
+      "unusedSymbolsView": [
+        {
+          "command": "referenceCounter.findUnusedSymbols",
+          "title": "Find Unused Symbols",
+          "icon": "$(search)",
+          "group": "navigation"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "referenceCounter.findUnusedSymbols",
+          "when": "view == unusedSymbolsView",
+          "group": "navigation"
+        },
+        {
+          "command": "referenceCounter.refreshUnusedSymbols",
+          "when": "view == unusedSymbolsView",
+          "group": "navigation"
+        },
+        {
+          "command": "referenceCounter.clearUnusedSymbols",
+          "when": "view == unusedSymbolsView",
+          "group": "navigation"
+        }
+      ]
     }
   }
 }

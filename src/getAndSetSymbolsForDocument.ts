@@ -1,33 +1,10 @@
 import * as vscode from 'vscode';
 import { getConfig } from './configChecks';
 import { decorateFile } from './decorateFile';
-import { getSymbolsForActiveFile } from './getSymbolsForActiveFile';
 import { getDecorationType } from './views/decorateFile';
+import { filterSymbolsToProcess, findReferencesForSymbol, filterReferencesByPatterns, getDocumentSymbols } from './utils/symbolUtils';
 
-function getSymbolsToProcess(rawSymbols: vscode.DocumentSymbol[]): vscode.DocumentSymbol[] {
-  const symbolsToProcess: Array<vscode.DocumentSymbol> = [];
-  const processedSymbolStarts = new Set<string>();
-
-  for (const symbol of rawSymbols) {
-    const symbolStartKey = `${symbol.selectionRange.start.line}:${symbol.selectionRange.start.character}`;
-    if (!processedSymbolStarts.has(symbolStartKey)) {
-      symbolsToProcess.push(symbol);
-      processedSymbolStarts.add(symbolStartKey);
-
-      // If it's a class, add its methods
-      if (symbol.kind === vscode.SymbolKind.Class) {
-        for (const method of symbol.children.filter(child => child.kind === vscode.SymbolKind.Method)) {
-          const methodStartKey = `${method.selectionRange.start.line}:${method.selectionRange.start.character}`;
-          if (!processedSymbolStarts.has(methodStartKey)) {
-            symbolsToProcess.push(method);
-            processedSymbolStarts.add(methodStartKey);
-          }
-        }
-      }
-    }
-  }
-  return symbolsToProcess;
-}
+// Using the shared utility function for filtering symbols
 
 async function generateDecorationForSymbol(
   symbol: vscode.DocumentSymbol,
@@ -37,17 +14,13 @@ async function generateDecorationForSymbol(
     excludePatterns: string[];
   }
 ): Promise<vscode.DecorationOptions> {
-  const references = await vscode.commands.executeCommand<vscode.Location[]>(
-    'vscode.executeReferenceProvider',
+  const references = await findReferencesForSymbol(
     editor.document.uri,
     symbol.selectionRange.start,
-    { includeDeclaration: false }
+    false // Don't include the declaration
   );
 
-  const filteredReferences = references?.filter(reference => {
-    const refPath = reference.uri.path;
-    return !config.excludePatterns.some(pattern => new RegExp(pattern.replace(/\*/g, '.*')).test(refPath));
-  });
+  const filteredReferences = filterReferencesByPatterns(references, config.excludePatterns);
 
   const isMethod = symbol.kind === vscode.SymbolKind.Method;
 
@@ -74,7 +47,7 @@ export async function getAndSetSymbolsForDocument(editor: vscode.TextEditor) {
     return;
   }
 
-  const rawSymbols = await getSymbolsForActiveFile(editor);
+  const rawSymbols = await getDocumentSymbols(editor.document.uri);
 
   if (!rawSymbols || rawSymbols.length === 0) {
     console.log('No symbols found');
@@ -82,7 +55,7 @@ export async function getAndSetSymbolsForDocument(editor: vscode.TextEditor) {
     return;
   }
 
-  const symbolsToProcess = getSymbolsToProcess(rawSymbols);
+  const symbolsToProcess = filterSymbolsToProcess(rawSymbols);
 
   if (symbolsToProcess.length === 0) {
     console.log('No symbols to process after deduplication.');
