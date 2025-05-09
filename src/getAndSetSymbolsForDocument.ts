@@ -34,7 +34,6 @@ async function generateDecorationForSymbol(
   editor: vscode.TextEditor,
   config: {
     includeImports: boolean;
-    minimalisticDecorations: boolean;
     excludePatterns: string[];
   }
 ): Promise<vscode.DecorationOptions> {
@@ -63,7 +62,7 @@ async function generateDecorationForSymbol(
     finalReferenceCount = filteredReferences ? filteredReferences.length : 0;
   }
 
-  return decorateFile(finalReferenceCount, symbol.selectionRange.start, config.minimalisticDecorations);
+  return decorateFile(finalReferenceCount, symbol.selectionRange.start);
 }
 
 export async function getAndSetSymbolsForDocument(editor: vscode.TextEditor) {
@@ -93,7 +92,6 @@ export async function getAndSetSymbolsForDocument(editor: vscode.TextEditor) {
   
   const decorationConfig = {
       includeImports: config.includeImports,
-      minimalisticDecorations: config.minimalisticDecorations,
       excludePatterns: config.excludePatterns
   };
 

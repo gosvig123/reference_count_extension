@@ -3,8 +3,9 @@ import * as vscode from 'vscode';
 export function decorateFile(
   refCount: number,
   rangeStart: vscode.Position,
-  minimalisticDecorations: boolean
 ) {
+  const config = vscode.workspace.getConfiguration('referenceCounter');
+  const minimalisticDecorations = config.get<boolean>('minimalisticDecorations') || false;
   const finalRefCount = refCount > 0 ? refCount - 1 : refCount;
   const displayText = finalRefCount > 0 || minimalisticDecorations ? `(${finalRefCount})` : 'No references';
   const textColor = finalRefCount > 0 ? 'gray' : 'red';
