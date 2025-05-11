@@ -20,9 +20,7 @@ async function generateDecorationForSymbol(
     false // Don't include the declaration
   );
 
-  symbolReferences = filterExcludedFiles(symbolReferences, config.excludePatterns);
-  
-  const isMethod = symbol.kind === vscode.SymbolKind.Method;
+  symbolReferences = filterExcludedFiles(symbolReferences);
 
 
   // Faithfully reproduce the original reference count logic, including its characteristics
@@ -31,10 +29,6 @@ async function generateDecorationForSymbol(
       ? symbolReferences.length
       : symbolReferences.length - (new Set(symbolReferences.map(reference => reference.uri.path)).size - 1)
     : 0;
-
-  if (isMethod) {
-    finalReferenceCount = symbolReferences ? symbolReferences.length : 0;
-  }
 
   return decorateFile(finalReferenceCount, symbol.selectionRange.start);
 }

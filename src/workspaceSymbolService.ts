@@ -5,7 +5,6 @@ import {
   filterMethodsAndTopLevelFunctions, 
   shouldExcludeSymbol,
   findReferencesForSymbol,
-  filterExcludedFiles,
   symbolToDescriptor
 } from './utils/symbolUtils';
 

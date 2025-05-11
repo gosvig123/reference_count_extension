@@ -100,8 +100,8 @@ export async function findReferencesForSymbol(
  */
 export function filterExcludedFiles(
   references: vscode.Location[],
-  excludePatterns: string[]
 ): vscode.Location[] {
+  const excludePatterns = vscode.workspace.getConfiguration('referenceCounter').get<string[]>('excludePatterns');
   if (!excludePatterns || excludePatterns.length === 0) {
     return references;
   }
