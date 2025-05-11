@@ -32,7 +32,7 @@ export async function getDocumentSymbols(documentUri: vscode.Uri): Promise<vscod
  * @param rawSymbols All symbols from a document
  * @returns Filtered symbols (top-level symbols and class methods only)
  */
-export function filterSymbolsToProcess(rawSymbols: vscode.DocumentSymbol[]): vscode.DocumentSymbol[] {
+export function filterMethodsAndTopLevelFunctions(rawSymbols: vscode.DocumentSymbol[]): vscode.DocumentSymbol[] {
   const symbolsToProcess: Array<vscode.DocumentSymbol> = [];
   const processedSymbolStarts = new Set<string>();
 
@@ -98,7 +98,7 @@ export async function findReferencesForSymbol(
  * @param excludePatterns Array of glob patterns to exclude
  * @returns Filtered references
  */
-export function filterReferencesByPatterns(
+export function filterExcludedFiles(
   references: vscode.Location[],
   excludePatterns: string[]
 ): vscode.Location[] {

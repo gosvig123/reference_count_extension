@@ -2,10 +2,10 @@ import * as vscode from 'vscode';
 import { 
   SymbolDescriptor, 
   getDocumentSymbols, 
-  filterSymbolsToProcess, 
+  filterMethodsAndTopLevelFunctions, 
   shouldExcludeSymbol,
   findReferencesForSymbol,
-  filterReferencesByPatterns,
+  filterExcludedFiles,
   symbolToDescriptor
 } from './utils/symbolUtils';
 
@@ -91,7 +91,7 @@ export async function findUnusedSymbolsInWorkspace(
       // Get document symbols using shared utility
       const topLevelSymbols = await getDocumentSymbols(fileUri);
       // Filter with shared logic
-      const filteredSymbols = filterSymbolsToProcess(topLevelSymbols);
+      const filteredSymbols = filterMethodsAndTopLevelFunctions(topLevelSymbols);
 
       for (const symbol of filteredSymbols) {
         if (token.isCancellationRequested) {

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { getConfig } from './configChecks';
 import { decorateFile } from './decorateFile';
 import { getDecorationType } from './views/decorateFile';
-import { filterSymbolsToProcess, findReferencesForSymbol, filterReferencesByPatterns, getDocumentSymbols } from './utils/symbolUtils';
+import { filterMethodsAndTopLevelFunctions, findReferencesForSymbol, filterExcludedFiles, getDocumentSymbols } from './utils/symbolUtils';
 
 // Using the shared utility function for filtering symbols
 
@@ -14,25 +14,26 @@ async function generateDecorationForSymbol(
     excludePatterns: string[];
   }
 ): Promise<vscode.DecorationOptions> {
-  const references = await findReferencesForSymbol(
+  let symbolReferences = await findReferencesForSymbol(
     editor.document.uri,
     symbol.selectionRange.start,
     false // Don't include the declaration
   );
 
-  const filteredReferences = filterReferencesByPatterns(references, config.excludePatterns);
-
+  symbolReferences = filterExcludedFiles(symbolReferences, config.excludePatterns);
+  
   const isMethod = symbol.kind === vscode.SymbolKind.Method;
 
+
   // Faithfully reproduce the original reference count logic, including its characteristics
-  let finalReferenceCount = filteredReferences
+  let finalReferenceCount = symbolReferences
     ? config.includeImports
-      ? filteredReferences.length
-      : filteredReferences.length - (new Set(filteredReferences.map(reference => reference.uri.path)).size - 1)
+      ? symbolReferences.length
+      : symbolReferences.length - (new Set(symbolReferences.map(reference => reference.uri.path)).size - 1)
     : 0;
 
   if (isMethod) {
-    finalReferenceCount = filteredReferences ? filteredReferences.length : 0;
+    finalReferenceCount = symbolReferences ? symbolReferences.length : 0;
   }
 
   return decorateFile(finalReferenceCount, symbol.selectionRange.start);
@@ -55,7 +56,7 @@ export async function getAndSetSymbolsForDocument(editor: vscode.TextEditor) {
     return;
   }
 
-  const symbolsToProcess = filterSymbolsToProcess(rawSymbols);
+  const symbolsToProcess = filterMethodsAndTopLevelFunctions(rawSymbols);
 
   if (symbolsToProcess.length === 0) {
     console.log('No symbols to process after deduplication.');
