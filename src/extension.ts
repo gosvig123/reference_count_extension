@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { updateDecorations } from './updateDecorations';
-import { disposeDecorationType } from './views/decorateFile'; 
+import { disposeDecorationType } from './getAndSetSymbolsForDocument';
 import { findUnusedSymbolsInWorkspace } from './workspaceSymbolService';
 import { UnusedSymbolsViewProvider } from './unusedSymbolsViewProvider';
 
@@ -42,13 +42,13 @@ export async function activate(context: vscode.ExtensionContext) {
       showCollapseAll: true
     })
   );
-  
+
   // Find unused symbols command - main scanning functionality
   context.subscriptions.push(
     vscode.commands.registerCommand('referenceCounter.findUnusedSymbols', async () => {
       // Provide initial feedback in the tree view
       unusedSymbolsProvider.refresh(undefined, "Scanning for unused symbols...");
-      
+
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -60,7 +60,7 @@ export async function activate(context: vscode.ExtensionContext) {
           try {
             // Pass the progress and token to the symbol finding function
             const symbols = await findUnusedSymbolsInWorkspace(progress, token);
-            
+
             if (token.isCancellationRequested) {
               unusedSymbolsProvider.refresh(undefined, "Scan cancelled by user.");
               vscode.window.showInformationMessage('Unused symbol scan cancelled.');
@@ -86,7 +86,7 @@ export async function activate(context: vscode.ExtensionContext) {
       );
     })
   );
-  
+
   // Refresh command - rerun the last scan if symbols exist, otherwise treat as new scan
   context.subscriptions.push(
     vscode.commands.registerCommand('referenceCounter.refreshUnusedSymbols', async () => {
@@ -94,7 +94,7 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.commands.executeCommand('referenceCounter.findUnusedSymbols');
     })
   );
-  
+
   // Clear command - clear the unused symbols view
   context.subscriptions.push(
     vscode.commands.registerCommand('referenceCounter.clearUnusedSymbols', () => {

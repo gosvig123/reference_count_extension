@@ -1,70 +1,140 @@
 import * as vscode from 'vscode';
-import { getConfig } from './configChecks';
-import { decorateFile } from './decorateFile';
-import { getDecorationType } from './views/decorateFile';
-import { filterMethodsAndTopLevelFunctions, findReferencesForSymbol, filterExcludedFiles, getDocumentSymbols } from './utils/symbolUtils';
 
-// Using the shared utility function for filtering symbols
+// Global decoration type - reused across the extension
+let decorationType: vscode.TextEditorDecorationType | undefined;
+
+function getDecorationType(): vscode.TextEditorDecorationType {
+  const minimalisticDecorations = vscode.workspace.getConfiguration('referenceCounter').get<boolean>('minimalisticDecorations') || false;
+
+  if (!decorationType) {
+    decorationType = vscode.window.createTextEditorDecorationType({
+      after: {
+        margin: minimalisticDecorations ? '0' : '0 0 0 0.5em',
+        textDecoration: 'none',
+      },
+      rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+    });
+  }
+  return decorationType;
+}
+
+export function disposeDecorationType(): void {
+  if (decorationType) {
+    decorationType.dispose();
+    decorationType = undefined;
+  }
+}
 
 async function generateDecorationForSymbol(
   symbol: vscode.DocumentSymbol,
-  editor: vscode.TextEditor,
-  config: {
-    includeImports: boolean;
-    excludePatterns: string[];
-  }
+  editor: vscode.TextEditor
 ): Promise<vscode.DecorationOptions> {
-  let symbolReferences = await findReferencesForSymbol(
+  // Get references for the symbol
+  const references = await vscode.commands.executeCommand<vscode.Location[]>(
+    'vscode.executeReferenceProvider',
     editor.document.uri,
     symbol.selectionRange.start,
-    false // Don't include the declaration
-  );
+    { includeDeclaration: false }
+  ) || [];
 
-  symbolReferences = filterExcludedFiles(symbolReferences);
+  // Filter excluded files
+  const excludePatterns = vscode.workspace.getConfiguration('referenceCounter').get<string[]>('excludePatterns') || [];
+  const filteredReferences = references.filter(ref => {
+    if (excludePatterns.length === 0) return true;
+    const refPath = ref.uri.path;
+    return !excludePatterns.some(pattern => {
+      const regexPattern = pattern.replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*');
+      return new RegExp(regexPattern).test(refPath);
+    });
+  });
 
+  // Calculate reference count
+  const includeImports = vscode.workspace.getConfiguration('referenceCounter').get<boolean>('includeImports') || false;
+  let refCount = 0;
+  if (filteredReferences.length > 0) {
+    if (includeImports) {
+      refCount = filteredReferences.length;
+    } else {
+      const uniqueFilePaths = new Set(filteredReferences.map(ref => ref.uri.path));
+      refCount = filteredReferences.length - (uniqueFilePaths.size - 1);
+    }
+  }
 
-  // Faithfully reproduce the original reference count logic, including its characteristics
-  let finalReferenceCount = symbolReferences
-    ? config.includeImports
-      ? symbolReferences.length
-      : symbolReferences.length - (new Set(symbolReferences.map(reference => reference.uri.path)).size - 1)
-    : 0;
+  // Create decoration
+  const minimalisticDecorations = vscode.workspace.getConfiguration('referenceCounter').get<boolean>('minimalisticDecorations') || false;
+  const finalRefCount = refCount > 0 ? refCount - 1 : refCount;
+  const displayText = finalRefCount > 0 || minimalisticDecorations ? `(${finalRefCount})` : 'No references';
+  const textColor = finalRefCount > 0 ? 'gray' : 'red';
 
-  return decorateFile(finalReferenceCount, symbol.selectionRange.start);
+  return {
+    range: new vscode.Range(symbol.selectionRange.start, symbol.selectionRange.start),
+    renderOptions: {
+      after: {
+        contentText: displayText,
+        color: textColor,
+      },
+    },
+  };
 }
 
 export async function getAndSetSymbolsForDocument(editor: vscode.TextEditor) {
-  const config = getConfig(editor);
+  // Check if file type is supported
+  const config = vscode.workspace.getConfiguration('referenceCounter');
+  const validFileExtensions = config.get<string[]>('validFileExtensions') || [];
+  const fileExtension = editor.document.uri.path.split('.').pop() || '';
 
-  if (!config.isValidFile) {
+  if (!validFileExtensions.includes(fileExtension)) {
     console.log('File type not supported');
-    editor.setDecorations(getDecorationType(), []); // Clear decorations
+    editor.setDecorations(getDecorationType(), []);
     return;
   }
 
-  const rawSymbols = await getDocumentSymbols(editor.document.uri);
+  // Get document symbols
+  const rawSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+    'vscode.executeDocumentSymbolProvider',
+    editor.document.uri
+  ) || [];
 
-  if (!rawSymbols || rawSymbols.length === 0) {
+  if (rawSymbols.length === 0) {
     console.log('No symbols found');
-    editor.setDecorations(getDecorationType(), []); // Clear decorations
+    editor.setDecorations(getDecorationType(), []);
     return;
   }
 
-  const symbolsToProcess = filterMethodsAndTopLevelFunctions(rawSymbols);
+  // Filter symbols to include top-level symbols and class methods
+  const symbolsToProcess: vscode.DocumentSymbol[] = [];
+  const processedSymbolStarts = new Set<string>();
+
+  for (const symbol of rawSymbols) {
+    const symbolStartKey = `${symbol.selectionRange.start.line}:${symbol.selectionRange.start.character}`;
+    if (!processedSymbolStarts.has(symbolStartKey)) {
+      symbolsToProcess.push(symbol);
+      processedSymbolStarts.add(symbolStartKey);
+
+      // If it's a class, add its methods
+      if (symbol.kind === vscode.SymbolKind.Class) {
+        for (const method of symbol.children.filter(child => child.kind === vscode.SymbolKind.Method)) {
+          const methodStartKey = `${method.selectionRange.start.line}:${method.selectionRange.start.character}`;
+          if (!processedSymbolStarts.has(methodStartKey)) {
+            symbolsToProcess.push(method);
+            processedSymbolStarts.add(methodStartKey);
+          }
+        }
+      }
+    }
+  }
 
   if (symbolsToProcess.length === 0) {
-    console.log('No symbols to process after deduplication.');
-    editor.setDecorations(getDecorationType(), []); // Clear decorations
+    console.log('No symbols to process after filtering.');
+    editor.setDecorations(getDecorationType(), []);
     return;
   }
-  
-  const decorationConfig = {
-      includeImports: config.includeImports,
-      excludePatterns: config.excludePatterns
-  };
 
+  // Generate decorations for all symbols (excluding private symbols starting with _)
   const decorations = await Promise.all(
-    symbolsToProcess.map(symbol => generateDecorationForSymbol(symbol, editor, decorationConfig))
+    symbolsToProcess
+      .filter(symbol => !symbol.name.startsWith('_'))
+      .map(symbol => generateDecorationForSymbol(symbol, editor))
   );
 
   editor.setDecorations(getDecorationType(), decorations);
