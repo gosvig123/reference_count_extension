@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "icon": "icon.png",
   "engines": {
     "vscode": "1.96.2"
@@ -75,7 +75,14 @@
             "**/*test/**i",
             ".next",
             ".next/",
-            ".next/cache"
+            ".next/cache",
+            "**/.venv/**",
+            "**/venv/**",
+            "**/env/**",
+            "**/.env/**",
+            "**/__pycache__/**",
+            "**/.pytest_cache/**",
+            "**/site-packages/**"
           ],
           "items": {
             "type": "string"

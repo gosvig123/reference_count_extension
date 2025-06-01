@@ -1,5 +1,8 @@
 import * as vscode from "vscode";
-import { UnusedSymbolDescriptor } from "./workspaceSymbolService";
+import { SymbolDescriptor } from "./services/symbolService";
+
+// Type alias for backward compatibility
+type UnusedSymbolDescriptor = SymbolDescriptor;
 
 export class UnusedSymbolItem extends vscode.TreeItem {
   constructor(
@@ -20,15 +23,15 @@ export class UnusedSymbolItem extends vscode.TreeItem {
       title: "Open Symbol Location",
       arguments: [descriptor.fileUri, { selection: descriptor.range }],
     };
-    
+
     // Set the context value for view item context menu contributions
     this.contextValue = 'unusedSymbol';
-    
+
     // Set icon based on symbol kind
     this.iconPath = this.getIconForSymbolKind(descriptor.kind);
 
   }
-  
+
   private getIconForSymbolKind(kind: vscode.SymbolKind): vscode.ThemeIcon {
     switch (kind) {
       case vscode.SymbolKind.Function:
@@ -68,7 +71,7 @@ export class UnusedSymbolsViewProvider
   private statusMessage: string | undefined =
     "Run 'Find Unused Symbols in Workspace' command to populate.";
 
-  constructor(private context: vscode.ExtensionContext) {}
+  constructor(_context: vscode.ExtensionContext) {}
 
   refresh(symbols?: UnusedSymbolDescriptor[], message?: string): void {
     if (symbols) {
@@ -77,7 +80,7 @@ export class UnusedSymbolsViewProvider
         this.statusMessage = "No unused symbols found in the workspace.";
       } else {
         this.statusMessage = `Found ${symbols.length} unused symbol${symbols.length === 1 ? '' : 's'}.`;
-        
+
         // Group by file for better context
         const fileCount = new Set(symbols.map(s => s.fileUri.toString())).size;
         if (fileCount > 1) {
@@ -93,10 +96,10 @@ export class UnusedSymbolsViewProvider
       this.statusMessage =
         "Run 'Find Unused Symbols in Workspace' command to populate.";
     }
-    
+
     // Fire event to refresh the entire tree
     this._onDidChangeTreeData.fire();
-    
+
     // Reveal the view when refreshed with meaningful content
     if (symbols && symbols.length > 0) {
       vscode.commands.executeCommand('unusedSymbolsView.focus');
@@ -120,15 +123,15 @@ export class UnusedSymbolsViewProvider
         const sortedSymbols = [...this.unusedSymbols].sort((a, b) => {
           const filePathA = a.fileUri.fsPath;
           const filePathB = b.fileUri.fsPath;
-          
+
           if (filePathA !== filePathB) {
             return filePathA.localeCompare(filePathB);
           }
-          
+
           // Same file, sort by line number
           return a.range.start.line - b.range.start.line;
         });
-        
+
         return Promise.resolve(
           sortedSymbols.map(
             (symbol) => new UnusedSymbolItem(symbol.name, symbol),
@@ -143,8 +146,8 @@ export class UnusedSymbolsViewProvider
         // Make it unclickable or give it a different context value if needed
         messageItem.command = undefined;
         messageItem.contextValue = 'message';
-        messageItem.iconPath = this.statusMessage.includes('scanning') || 
-                               this.statusMessage.includes('Scanning') ? 
+        messageItem.iconPath = this.statusMessage.includes('scanning') ||
+                               this.statusMessage.includes('Scanning') ?
                                new vscode.ThemeIcon('loading~spin') : undefined;
         return Promise.resolve([messageItem]);
       }
@@ -168,15 +171,6 @@ export class UnusedSymbolsViewProvider
       "Run 'Find Unused Symbols in Workspace' command to populate.";
     this._onDidChangeTreeData.fire();
   }
-  
-  // Update status without clearing existing symbols
-  updateStatus(message: string): void {
-    this.statusMessage = message;
-    this._onDidChangeTreeData.fire();
-  }
-  
-  // Helper method to check if we have content
-  hasContent(): boolean {
-    return this.unusedSymbols.length > 0;
-  }
+
+
 }

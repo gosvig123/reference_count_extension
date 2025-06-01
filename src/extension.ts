@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { updateDecorations } from './updateDecorations';
 import { disposeDecorationType } from './getAndSetSymbolsForDocument';
-import { findUnusedSymbolsInWorkspace } from './workspaceSymbolService';
+import { SymbolService } from './services/symbolService';
 import { UnusedSymbolsViewProvider } from './unusedSymbolsViewProvider';
 
 let unusedSymbolsProvider: UnusedSymbolsViewProvider;
@@ -16,7 +16,6 @@ export async function activate(context: vscode.ExtensionContext) {
   // Update when the active editor changes
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(async (editor) => {
-      console.log('Active editor changed');
       if (editor) {
         await updateDecorations(editor);
       }
@@ -26,7 +25,6 @@ export async function activate(context: vscode.ExtensionContext) {
   // Update when the document is saved
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(async (event) => {
-      console.log('Document saved');
       if (event === vscode.window.activeTextEditor?.document) {
         await updateDecorations(vscode.window.activeTextEditor);
       }
@@ -59,7 +57,8 @@ export async function activate(context: vscode.ExtensionContext) {
           progress.report({ increment: 0, message: "Initializing scan..." });
           try {
             // Pass the progress and token to the symbol finding function
-            const symbols = await findUnusedSymbolsInWorkspace(progress, token);
+            const symbolService = SymbolService.getInstance();
+            const symbols = await symbolService.findUnusedSymbolsInWorkspace(progress, token);
 
             if (token.isCancellationRequested) {
               unusedSymbolsProvider.refresh(undefined, "Scan cancelled by user.");
