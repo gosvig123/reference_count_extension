@@ -9,7 +9,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Initialize decorationType
   decorationType = vscode.window.createTextEditorDecorationType({
     after: {
-      margin: '0 0 0 0.5em',
+      margin: '0 0 0 0.8em',
       textDecoration: 'none',
     },
   });
