@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.75.0"
@@ -60,7 +60,7 @@
         },
         "referenceCounter.decorationPosition": {
           "type": "string",
-          "default": "inline",
+          "default": "",
           "enum": ["above", "inline"],
           "enumDescriptions": [
             "Display reference count above the symbol",
