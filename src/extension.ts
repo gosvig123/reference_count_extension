@@ -6,16 +6,35 @@ const DEBOUNCE_DELAY = 300;
 let decorationType: vscode.TextEditorDecorationType;
 let updateTimeout: NodeJS.Timeout | undefined;
 let excludePatterns: RegExp[] = [];
+let decorationPosition: 'above' | 'inline' = 'inline';
+
+function updateDecorationType(): void {
+  decorationType?.dispose();
+
+  const config = vscode.workspace.getConfiguration('referenceCounter');
+  decorationPosition = config.get<'inline' | 'above'>('decorationPosition') || 'inline';
+
+  if (decorationPosition === 'above') {
+    decorationType = vscode.window.createTextEditorDecorationType({
+      isWholeLine: false,
+      before: {
+        contentText: '',
+        textDecoration: 'none; position: absolute; transform: translateY(-100%);',
+      },
+    });
+  } else {
+    decorationType = vscode.window.createTextEditorDecorationType({
+      after: {
+        margin: '0 0 0 0.8em',
+        textDecoration: 'none',
+      },
+    });
+  }
+}
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('Reference Counter: Activating extension');
 
-  decorationType = vscode.window.createTextEditorDecorationType({
-    after: {
-      margin: '0 0 0 0.8em',
-      textDecoration: 'none',
-    },
-  });
+  updateDecorationType();
 
   // Initial decoration
   if (vscode.window.activeTextEditor) {
@@ -47,6 +66,20 @@ export async function activate(context: vscode.ExtensionContext) {
           await updateDecorations(editor);
         }
       }, DEBOUNCE_DELAY);
+    })
+  );
+
+  // Update decoration type when configuration changes
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (event.affectsConfiguration('referenceCounter.decorationPosition')) {
+        console.log('Reference Counter: Decoration position configuration changed');
+        updateDecorationType();
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+          await updateDecorations(editor);
+        }
+      }
     })
   );
 }
@@ -93,17 +126,14 @@ async function processSymbol(
 
   // Process the symbol itself
   const count = await getReferenceCount(uri, symbol.selectionRange.start);
-  console.log(`Reference Counter: Symbol ${symbol.name} has ${count} references`);
   decorations.push(createDecoration(count, symbol.range.start));
 
   // Process methods if it's a class
   if (symbol.kind === vscode.SymbolKind.Class) {
     const methods = symbol.children.filter(child => child.kind === vscode.SymbolKind.Method);
-    console.log(`Reference Counter: Class ${symbol.name} has ${methods.length} methods`);
 
     for (const method of methods) {
       const methodCount = await getReferenceCount(uri, method.selectionRange.start);
-      console.log(`Reference Counter: Method ${method.name} has ${methodCount} references`);
       decorations.push(createDecoration(methodCount, method.range.start));
     }
   }
@@ -113,25 +143,35 @@ async function processSymbol(
 
 function createDecoration(count: number, position: vscode.Position): vscode.DecorationOptions {
   const color = count > 0 ? 'gray' : 'red';
+  const contentText = `(${count})`;
 
-  return {
-    range: new vscode.Range(position, position),
-    renderOptions: {
-      after: {
-        contentText: `(${count})`,
-        color,
+  if (decorationPosition === 'above') {
+    return {
+      range: new vscode.Range(position, position),
+      renderOptions: {
+        before: {
+          contentText,
+          color,
+          textDecoration: `none; position: absolute; transform: translateY(-1.2em);`,
+        },
       },
-    },
-  };
+    };
+  } else {
+    return {
+      range: new vscode.Range(position, position),
+      renderOptions: {
+        after: {
+          contentText,
+          color,
+        },
+      },
+    };
+  }
 }
 
 async function updateDecorations(editor: vscode.TextEditor): Promise<void> {
   try {
-    console.log(`Reference Counter: updateDecorations called for ${editor.document.uri.path}`);
-    console.log(`Reference Counter: Language ID: ${editor.document.languageId}`);
-
     if (!SUPPORTED_LANGUAGES.has(editor.document.languageId)) {
-      console.log(`Reference Counter: Language ${editor.document.languageId} not supported`);
       return;
     }
 
@@ -142,10 +182,8 @@ async function updateDecorations(editor: vscode.TextEditor): Promise<void> {
       editor.document.uri
     );
 
-    console.log(`Reference Counter: Found ${symbols?.length || 0} symbols`);
 
     if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
-      console.log('Reference Counter: No symbols found');
       return;
     }
 
@@ -154,7 +192,6 @@ async function updateDecorations(editor: vscode.TextEditor): Promise<void> {
     );
 
     const flatDecorations = decorations.flat();
-    console.log(`Reference Counter: Applying ${flatDecorations.length} decorations`);
 
     editor.setDecorations(decorationType, flatDecorations);
   } catch (error) {
