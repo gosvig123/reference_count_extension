@@ -5,7 +5,7 @@
   "version": "0.5.1",
   "icon": "icon.png",
   "engines": {
-    "vscode": "1.96.2"
+    "vscode": "^1.75.0"
   },
   "categories": [
     "Other"
@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/vscode": "^1.91.0",
+    "@types/vscode": "^1.75.0",
     "typescript": "^5.4.5",
     "webpack": "^5.92.1",
     "webpack-cli": "^5.1.4",

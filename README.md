@@ -24,6 +24,25 @@ A Visual Studio Code extension that displays the number of references for functi
   - TypeScript (`.ts`, `.tsx`)
 - Configurable file exclusion patterns
 
+## Compatibility
+
+This extension is compatible with:
+- **VSCode**: Version 1.75.0 and above
+- **Cursor**: All versions (Cursor is based on VSCode)
+- **VSCodium**: Version 1.75.0 and above
+- **Other VSCode forks**: Should work with any fork based on VSCode 1.75.0+
+
+### How It Works
+
+The extension uses VSCode's Language Server Protocol (LSP) integration through standard VSCode APIs:
+- `vscode.executeDocumentSymbolProvider` - Gets symbols from your active language server
+- `vscode.executeReferenceProvider` - Gets references from your active language server
+
+This means the extension automatically works with any language that has an LSP server installed:
+- **TypeScript/JavaScript**: Built-in TypeScript language server
+- **Python**: Pylance, Jedi Language Server, or other Python language servers
+- **Other languages**: Any language with LSP support can be added
+
 ## Configuration
 
 You can configure the extension through VS Code settings:

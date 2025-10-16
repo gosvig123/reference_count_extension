@@ -1,154 +1,167 @@
 import * as vscode from 'vscode';
-import { decorateFile } from './decorateFile';
+
+const SUPPORTED_LANGUAGES = new Set(['python', 'javascript', 'typescript', 'javascriptreact', 'typescriptreact']);
+const DEBOUNCE_DELAY = 300;
 
 let decorationType: vscode.TextEditorDecorationType;
 let updateTimeout: NodeJS.Timeout | undefined;
-const referenceCache = new Map<string, number>();
-let excludeRegexes: RegExp[] = [];
+let excludePatterns: RegExp[] = [];
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('Activating extension');
+  console.log('Reference Counter: Activating extension');
 
-  // Initialize decorationType
   decorationType = vscode.window.createTextEditorDecorationType({
     after: {
       margin: '0 0 0 0.8em',
       textDecoration: 'none',
     },
   });
-  // Update decorations for the current active editor
+
+  // Initial decoration
   if (vscode.window.activeTextEditor) {
+    console.log('Reference Counter: Initial editor found, updating decorations');
     await updateDecorations(vscode.window.activeTextEditor);
   }
 
-  // Update when the active editor changes
+  // Update on editor change
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(async (editor) => {
-      console.log('Active editor changed');
+      console.log('Reference Counter: Active editor changed');
       if (editor) {
         await updateDecorations(editor);
       }
-    }),
-  );
-
-  // Update when the document is edited (with debouncing)
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument(async (event) => {
-      console.log('Document changed');
-      if (updateTimeout) {
-        clearTimeout(updateTimeout);
-      }
-      
-      updateTimeout = setTimeout(async () => {
-        if (event.document === vscode.window.activeTextEditor?.document) {
-          await updateDecorations(vscode.window.activeTextEditor);
-        }
-      }, 300); // 300ms debounce
-    }),
-  );
-
-  // Clear cache when files are saved
-  context.subscriptions.push(
-    vscode.workspace.onDidSaveTextDocument(() => {
-      referenceCache.clear();
-    }),
-  );
-
-}
-
-function updateExcludePatterns() {
-  const config = vscode.workspace.getConfiguration('referenceCounter');
-  const excludePatterns = config.get<string[]>('excludePatterns') || [];
-  excludeRegexes = excludePatterns.map(pattern => 
-    new RegExp(pattern.replace(/\*/g, '.*'))
-  );
-}
-
-async function getReferenceCount(editor: vscode.TextEditor, symbol: vscode.DocumentSymbol): Promise<number> {
-  const symbolKey = `${editor.document.uri.toString()}:${symbol.name}:${symbol.range.start.line}`;
-  
-  if (referenceCache.has(symbolKey)) {
-    return referenceCache.get(symbolKey)!;
-  }
-
-  const symbolReferences = await vscode.commands.executeCommand<vscode.Location[]>(
-    'vscode.executeReferenceProvider',
-    editor.document.uri,
-    symbol.selectionRange.start,
-    { includeDeclaration: false }
-  );
-
-  const filteredReferences = symbolReferences?.filter(reference => {
-    const refPath = reference.uri.path;
-    return !excludeRegexes.some(regex => regex.test(refPath));
-  });
-
-  const count = filteredReferences ? filteredReferences.length : 0;
-  referenceCache.set(symbolKey, count);
-  return count;
-}
-
-async function processSymbolDecorations(editor: vscode.TextEditor, symbols: vscode.DocumentSymbol[]): Promise<vscode.DecorationOptions[]> {
-  const decorations = await Promise.all(
-    symbols.flatMap(async (symbol) => {
-      const decorationsForSymbol: vscode.DecorationOptions[] = [];
-
-      // Get references for the top-level symbol
-      const referenceCount = await getReferenceCount(editor, symbol);
-      decorationsForSymbol.push(decorateFile(referenceCount, symbol.range.start));
-
-      // If it's a class, process its methods
-      if (symbol.kind === vscode.SymbolKind.Class) {
-        const methods = symbol.children.filter(
-          child => child.kind === vscode.SymbolKind.Method
-        );
-
-        // Get references for each method
-        const methodDecorations = await Promise.all(
-          methods.map(async (method) => {
-            const methodReferenceCount = await getReferenceCount(editor, method);
-            return decorateFile(methodReferenceCount, method.range.start);
-          })
-        );
-
-        decorationsForSymbol.push(...methodDecorations);
-      }
-
-      return decorationsForSymbol;
     })
   );
 
-  return decorations.flat();
+  // Debounced update on document change
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument(async (event) => {
+      if (updateTimeout) {
+        clearTimeout(updateTimeout);
+      }
+
+      updateTimeout = setTimeout(async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && event.document === editor.document) {
+          console.log('Reference Counter: Document changed, updating decorations');
+          await updateDecorations(editor);
+        }
+      }, DEBOUNCE_DELAY);
+    })
+  );
 }
 
-async function updateDecorations(editor: vscode.TextEditor) {
-  updateExcludePatterns();
+function loadExcludePatterns(): void {
+  const config = vscode.workspace.getConfiguration('referenceCounter');
+  const patterns = config.get<string[]>('excludePatterns') || [];
+  excludePatterns = patterns.map(pattern => new RegExp(pattern.replace(/\*/g, '.*')));
+}
 
-  const acceptedExtensions = new Set(['py', 'js', 'jsx', 'ts', 'tsx']);
-  const fileExtension = editor.document.uri.path.split('.').pop() || '';
-  const isAcceptedFile = acceptedExtensions.has(fileExtension);
+async function getReferenceCount(
+  uri: vscode.Uri,
+  position: vscode.Position
+): Promise<number> {
+  try {
+    const references = await vscode.commands.executeCommand<vscode.Location[]>(
+      'vscode.executeReferenceProvider',
+      uri,
+      position
+    );
 
-  if (!isAcceptedFile) {
-    console.log('File type not supported');
-    return;
+    if (!references || !Array.isArray(references)) {
+      return 0;
+    }
+
+    const filtered = references.filter(ref =>
+      !excludePatterns.some(regex => regex.test(ref.uri.path))
+    );
+
+    return filtered.length;
+  } catch (error) {
+    console.error('Reference Counter: Error getting reference count:', error);
+    return 0;
+  }
+}
+
+async function processSymbol(
+  uri: vscode.Uri,
+  symbol: vscode.DocumentSymbol
+): Promise<vscode.DecorationOptions[]> {
+  const decorations: vscode.DecorationOptions[] = [];
+
+  console.log(`Reference Counter: Processing symbol ${symbol.name} (kind: ${symbol.kind})`);
+
+  // Process the symbol itself
+  const count = await getReferenceCount(uri, symbol.selectionRange.start);
+  console.log(`Reference Counter: Symbol ${symbol.name} has ${count} references`);
+  decorations.push(createDecoration(count, symbol.range.start));
+
+  // Process methods if it's a class
+  if (symbol.kind === vscode.SymbolKind.Class) {
+    const methods = symbol.children.filter(child => child.kind === vscode.SymbolKind.Method);
+    console.log(`Reference Counter: Class ${symbol.name} has ${methods.length} methods`);
+
+    for (const method of methods) {
+      const methodCount = await getReferenceCount(uri, method.selectionRange.start);
+      console.log(`Reference Counter: Method ${method.name} has ${methodCount} references`);
+      decorations.push(createDecoration(methodCount, method.range.start));
+    }
   }
 
-  const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-    'vscode.executeDocumentSymbolProvider',
-    editor.document.uri,
-  );
+  return decorations;
+}
 
-  if (!symbols || symbols.length === 0) {
-    console.log('No symbols found');
-    return;
+function createDecoration(count: number, position: vscode.Position): vscode.DecorationOptions {
+  const color = count > 0 ? 'gray' : 'red';
+
+  return {
+    range: new vscode.Range(position, position),
+    renderOptions: {
+      after: {
+        contentText: `(${count})`,
+        color,
+      },
+    },
+  };
+}
+
+async function updateDecorations(editor: vscode.TextEditor): Promise<void> {
+  try {
+    console.log(`Reference Counter: updateDecorations called for ${editor.document.uri.path}`);
+    console.log(`Reference Counter: Language ID: ${editor.document.languageId}`);
+
+    if (!SUPPORTED_LANGUAGES.has(editor.document.languageId)) {
+      console.log(`Reference Counter: Language ${editor.document.languageId} not supported`);
+      return;
+    }
+
+    loadExcludePatterns();
+
+    const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+      'vscode.executeDocumentSymbolProvider',
+      editor.document.uri
+    );
+
+    console.log(`Reference Counter: Found ${symbols?.length || 0} symbols`);
+
+    if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+      console.log('Reference Counter: No symbols found');
+      return;
+    }
+
+    const decorations = await Promise.all(
+      symbols.map(symbol => processSymbol(editor.document.uri, symbol))
+    );
+
+    const flatDecorations = decorations.flat();
+    console.log(`Reference Counter: Applying ${flatDecorations.length} decorations`);
+
+    editor.setDecorations(decorationType, flatDecorations);
+  } catch (error) {
+    console.error('Reference Counter: Error updating decorations:', error);
   }
-
-  const decorations = await processSymbolDecorations(editor, symbols);
-  editor.setDecorations(decorationType, decorations);
 }
 
 export function deactivate() {
-  if (decorationType) {
-    decorationType.dispose();
-  }
+  decorationType?.dispose();
 }
