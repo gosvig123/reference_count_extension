@@ -2,7 +2,7 @@
   "name": "css-class-counter",
   "displayName": "Reference Counter",
   "description": "Counts and displays the usage of references in your code",
-  "version": "0.5.4",
+  "version": "0.5.6",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.95.0"
@@ -67,6 +67,11 @@
             "Display reference count inline next to the symbol"
           ],
           "description": "Position of the reference count decoration relative to the symbol"
+        },
+        "referenceCounter.excludeDeclaration": {
+          "type": "boolean",
+          "default": false,
+          "description": "Exclude the declaration itself from the reference count"
         }
       }
     }

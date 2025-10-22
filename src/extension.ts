@@ -7,6 +7,7 @@ let decorationType: vscode.TextEditorDecorationType;
 let updateTimeout: NodeJS.Timeout | undefined;
 let excludePatterns: RegExp[] = [];
 let decorationPosition: 'above' | 'inline' = 'inline';
+let excludeDeclaration: boolean = false;
 
 function updateDecorationType(): void {
   decorationType?.dispose();
@@ -80,6 +81,13 @@ export async function activate(context: vscode.ExtensionContext) {
           await updateDecorations(editor);
         }
       }
+      if (event.affectsConfiguration('referenceCounter.excludeDeclaration')) {
+        console.log('Reference Counter: Exclude declaration configuration changed');
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+          await updateDecorations(editor);
+        }
+      }
     })
   );
 }
@@ -88,6 +96,7 @@ function loadExcludePatterns(): void {
   const config = vscode.workspace.getConfiguration('referenceCounter');
   const patterns = config.get<string[]>('excludePatterns') || [];
   excludePatterns = patterns.map(pattern => new RegExp(pattern.replace(/\*/g, '.*')));
+  excludeDeclaration = config.get<boolean>('excludeDeclaration') || false;
 }
 
 async function getReferenceCount(
@@ -105,9 +114,15 @@ async function getReferenceCount(
       return 0;
     }
 
-    const filtered = references.filter(ref =>
+    let filtered = references.filter(ref =>
       !excludePatterns.some(regex => regex.test(ref.uri.path))
     );
+
+    if (excludeDeclaration && filtered.length > 0) {
+      filtered = filtered.filter(ref =>
+        !(ref.uri.toString() === uri.toString() && ref.range.start.isEqual(position))
+      );
+    }
 
     return filtered.length;
   } catch (error) {
